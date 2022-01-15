@@ -271,3 +271,9 @@
   - FemtoRV32 on Icebreaker now supports compressed instructions
   - Fixed alignment of dictionary chain start constant
   - Fixed compressed immediate handling in disassembler-rv32imc
+
+05.01.2022, Matthias Koch, Mecrisp-Quintus 0.37 experimental:
+
+  - New target: ULX3S
+  - Added SDRAM controller together with Icarus timing simulation
+  - Paint on a 8x8 LED matrix demo for HX1K Icestick
