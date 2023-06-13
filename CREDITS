@@ -17,6 +17,7 @@ OpenOCD flashing instructions for GD32VF103 by Theo Zanibellato
 Port for CH56X by Hans Baier:
   https://github.com/hansfbaier/mecrisp-quintus-ch56x-port
   https://github.com/hansfbaier/mecrisp-quintus-ch56x-boardsupport
+Port for CH32V203F8P6 by Ivan Dimitrov
 
 Hardware donations:
 

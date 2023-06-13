@@ -887,9 +887,14 @@ core_find: # ( address length -- Code-Adresse Flags )
 
 1:# Loop through the dictionary
 
-  li x15, Flag_invisible
   lw x10, 4(x8) # Fetch Flags to see if this definition is visible.
+  li x15, Flag_invisible
   beq x15, x10, 2f # Skip this definition if invisible
+
+  .ifdef erasedflashspecial
+  li x15, erasedword
+  beq x15, x10, 2f # Skip this definition if invisible
+  .endif
 
   # Definition is visible. Compare the name !
   dup

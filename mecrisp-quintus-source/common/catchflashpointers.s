@@ -114,6 +114,11 @@ SucheFlashPointer_Hangelschleife:
   li x13, Flag_invisible # Flag_invisible ? Überspringen !  Skip invisible definitions
   beq x11, x13, Sucheflashpointer_Speicherbelegung_fertig
 
+  .ifdef erasedflashspecial
+  li x13, erasedword # Leeren Flash überspringen !  Skip empty flash locations
+  beq x11, x13, Sucheflashpointer_Speicherbelegung_fertig
+  .endif
+
     # Dies Wort ist sichtbar. Prüfe, ob es Ram-Speicher anfordert und belegt.
     # This definition is visible. Check if it allocates RAM.
 

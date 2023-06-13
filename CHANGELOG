@@ -347,3 +347,11 @@
   - Fixed a flaw in the smaller Verilog UARTs
   - Faster software multiplication for RV32I
   - Improved logic for Nandland Go
+
+07.06.2023, Matthias Koch, Mecrisp-Quintus 1.0.5
+
+  - Added support for special erased flash contents other than $0000 and $FFFF
+  - Added multitasking essentials in assembler for GD32VF103
+
+  - Contribution by Ivan Dimitrov:
+      New target: CH32V203F8P6

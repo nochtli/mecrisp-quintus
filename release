@@ -395,3 +395,27 @@ cd ../..
 fi
 
 # -----------------------------------------------------------------------------
+
+if [[ -z "$1" || "$1" = "ch32v203f8p6" ]]
+then
+cd mecrisp-quintus-source/ch32v203f8p6
+make clean all
+cp *.bin ../../ch32v203f8p6
+cp *.hex ../../ch32v203f8p6
+make clean
+cd ../..
+
+cd ch32v203f8p6
+cd quintusemu-source
+fpc -XX -O3 quintusemu-ch32v203f8p6
+mv quintusemu-ch32v203f8p6 ..
+rm *.o
+cd ..
+
+cat ../common/conditional.txt                          ../common/disassembler-rv32imc.txt ../common/fixpt-math-lib.fs ../common/dictionary-tools.txt ../common/multitask.txt ../common/multitask-debug.txt cornerstone.fs > included.txt
+./buildcore ./quintusemu-ch32v203f8p6 mecrisp-quintus-ch32v203f8p6.bin included.txt      mecrisp-quintus-ch32v203f8p6-with-tools.bin
+
+cd ..
+fi
+
+# -----------------------------------------------------------------------------

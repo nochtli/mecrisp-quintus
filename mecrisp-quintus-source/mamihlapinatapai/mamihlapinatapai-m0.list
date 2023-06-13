@@ -5,13 +5,13 @@ mamihlapinatapai-m0.elf:     file format elf32-littlearm
 Disassembly of section .text:
 
 00000000 <mamihlapinatapai>:
-   0:	a1ff      	add	r1, pc, #1020	; (adr r1, 400 <riscvboot>)
+   0:	a1ff      	add	r1, pc, #1020	@ (adr r1, 400 <riscvboot>)
    2:	4668      	mov	r0, sp
    4:	2200      	movs	r2, #0
    6:	2300      	movs	r3, #0
    8:	5083      	str	r3, [r0, r2]
    a:	3204      	adds	r2, #4
-   c:	2a80      	cmp	r2, #128	; 0x80
+   c:	2a80      	cmp	r2, #128	@ 0x80
    e:	d1fb      	bne.n	8 <mamihlapinatapai+0x8>
   10:	e04f      	b.n	b2 <mamihlapinatapai_execute>
 
@@ -113,11 +113,11 @@ Disassembly of section .text:
 
 000000b2 <mamihlapinatapai_execute>:
   b2:	680a      	ldr	r2, [r1, #0]
-  b4:	247f      	movs	r4, #127	; 0x7f
+  b4:	247f      	movs	r4, #127	@ 0x7f
   b6:	4014      	ands	r4, r2
-  b8:	2c6f      	cmp	r4, #111	; 0x6f
+  b8:	2c6f      	cmp	r4, #111	@ 0x6f
   ba:	d0d2      	beq.n	62 <execute_jal>
-  bc:	2c37      	cmp	r4, #55	; 0x37
+  bc:	2c37      	cmp	r4, #55	@ 0x37
   be:	d0f0      	beq.n	a2 <execute_lui>
   c0:	2c17      	cmp	r4, #23
   c2:	d0ea      	beq.n	9a <execute_auipc>
@@ -125,7 +125,7 @@ Disassembly of section .text:
   c6:	0eed      	lsrs	r5, r5, #27
   c8:	00ad      	lsls	r5, r5, #2
   ca:	5945      	ldr	r5, [r0, r5]
-  cc:	2c67      	cmp	r4, #103	; 0x67
+  cc:	2c67      	cmp	r4, #103	@ 0x67
   ce:	d0d9      	beq.n	84 <execute_jalr>
   d0:	0453      	lsls	r3, r2, #17
   d2:	0f5b      	lsrs	r3, r3, #29
@@ -137,11 +137,11 @@ Disassembly of section .text:
   de:	0ef6      	lsrs	r6, r6, #27
   e0:	00b6      	lsls	r6, r6, #2
   e2:	5986      	ldr	r6, [r0, r6]
-  e4:	2c33      	cmp	r4, #51	; 0x33
+  e4:	2c33      	cmp	r4, #51	@ 0x33
   e6:	d062      	beq.n	1ae <execute_register>
-  e8:	2c63      	cmp	r4, #99	; 0x63
+  e8:	2c63      	cmp	r4, #99	@ 0x63
   ea:	d002      	beq.n	f2 <execute_branch>
-  ec:	2c23      	cmp	r4, #35	; 0x23
+  ec:	2c23      	cmp	r4, #35	@ 0x23
   ee:	d0a7      	beq.n	40 <execute_store>
   f0:	e7de      	b.n	b0 <continue>
 
@@ -426,9 +426,9 @@ Disassembly of section .ARM.attributes:
    4:	61656100 	cmnvs	r5, r0, lsl #2
    8:	01006962 	tsteq	r0, r2, ror #18
    c:	00000016 	andeq	r0, r0, r6, lsl r0
-  10:	726f4305 	rsbvc	r4, pc, #335544320	; 0x14000000
-  14:	2d786574 	cfldr64cs	mvdx6, [r8, #-464]!	; 0xfffffe30
+  10:	726f4305 	rsbvc	r4, pc, #335544320	@ 0x14000000
+  14:	2d786574 	cfldr64cs	mvdx6, [r8, #-464]!	@ 0xfffffe30
   18:	0600304d 	streq	r3, [r0], -sp, asr #32
   1c:	094d070c 	stmdbeq	sp, {r2, r3, r8, r9, sl}^
-  20:	Address 0x0000000000000020 is out of bounds.
+  20:	Address 0x20 is out of bounds.
 
