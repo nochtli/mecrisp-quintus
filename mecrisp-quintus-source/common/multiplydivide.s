@@ -25,8 +25,8 @@
 # -----------------------------------------------------------------------------
   Definition Flag_foldable_2|Flag_inline|Flag_noframe|Flag_opcodierbar, "*" # ( x1 x2 -- x1*x2 )
 # -----------------------------------------------------------------------------
-  lw x15, 0(x9)
-  addi x9, x9, 4
+  lc x15, 0(x9)
+  addi x9, x9, CELL
   mul x8, x15, x8
   ret
 
@@ -39,22 +39,22 @@ multiply_opcodierung:
 
   push x1
 
-  addi x9, x9, -4
-  sw x15, 0(x9)
+  addi x9, x9, -CELL
+  sc x15, 0(x9)
 
   pushdaconst reg_tmp1
   call registerliteralkomma
 
   pop x1
-  j komma
+  j wkomma
 
 # -----------------------------------------------------------------------------
   Definition Flag_foldable_2|Flag_inline|Flag_noframe, "um*" # ( u1 u2 -- ud )
 um_star:
 # -----------------------------------------------------------------------------
-  lw x15, 0(x9)
+  lc x15, 0(x9)
   mul x14, x15, x8
-  sw x14, 0(x9)
+  sc x14, 0(x9)
   mulhu x8, x15, x8
   ret
 
@@ -62,24 +62,25 @@ um_star:
   Definition Flag_foldable_2|Flag_inline|Flag_noframe, "m*" # ( n1 n2 -- d )
 m_star:
 # -----------------------------------------------------------------------------
-  lw x15, 0(x9)
+  lc x15, 0(x9)
   mul x14, x15, x8
-  sw x14, 0(x9)
+  sc x14, 0(x9)
   mulh x8, x15, x8
   ret
 
 # -----------------------------------------------------------------------------
   Definition Flag_foldable_2|Flag_inline|Flag_noframe, "mulhsu" # ( n1 n2 -- n )
 # -----------------------------------------------------------------------------
-  lw x15, 0(x9)
+  lc x15, 0(x9)
+  addi x9, x9, CELL
   mulhsu x8, x15, x8
   ret
 
 # -----------------------------------------------------------------------------
   Definition Flag_foldable_2|Flag_inline|Flag_noframe|Flag_opcodierbar, "/" # ( n1 n2 -- n1/n2 )
 # -----------------------------------------------------------------------------
-  lw x15, 0(x9)
-  addi x9, x9, 4
+  lc x15, 0(x9)
+  addi x9, x9, CELL
   div x8, x15, x8
   ret
 
@@ -92,8 +93,8 @@ m_star:
 # -----------------------------------------------------------------------------
   Definition Flag_foldable_2|Flag_inline|Flag_noframe|Flag_opcodierbar, "mod" # ( n1 n2 -- n1%n2 )
 # -----------------------------------------------------------------------------
-  lw x15, 0(x9)
-  addi x9, x9, 4
+  lc x15, 0(x9)
+  addi x9, x9, CELL
   rem x8, x15, x8
   ret
 
@@ -107,9 +108,9 @@ m_star:
   Definition Flag_foldable_2|Flag_inline|Flag_noframe, "u/mod" # ( u1 u2 -- rem quot )
 u_divmod:
 # -----------------------------------------------------------------------------
-  lw x15, 0(x9)
+  lc x15, 0(x9)
   remu x14, x15, x8
-  sw x14, 0(x9)
+  sc x14, 0(x9)
   divu x8, x15, x8
   ret
 
@@ -117,8 +118,8 @@ u_divmod:
   Definition Flag_foldable_2|Flag_inline|Flag_noframe, "/mod" # ( n1 n2 -- rem quot )
 divmod:
 # -----------------------------------------------------------------------------
-  lw x15, 0(x9)
+  lc x15, 0(x9)
   rem x14, x15, x8
-  sw x14, 0(x9)
+  sc x14, 0(x9)
   div x8, x15, x8
   ret

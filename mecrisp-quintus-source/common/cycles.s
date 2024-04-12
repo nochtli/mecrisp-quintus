@@ -18,6 +18,8 @@
 
 # Cycle counters
 
+.ifndef RV64
+
 # -----------------------------------------------------------------------------
   Definition Flag_visible, "cycles64" # Uptime in cycles, 64 bits
 cycles64:
@@ -31,6 +33,8 @@ cycles64:
 
   pushda x15
   ret
+
+.endif
 
 # -----------------------------------------------------------------------------
   Definition Flag_visible, "cycles" # Uptime in cycles, 32 bits

@@ -138,7 +138,7 @@ zifferstringende:  # Schließt einen neuen Ziffernstring ab und gibt seine Adres
   laf x15, Zahlenpuffer
   lbu x8, 0(x15)
   addi x15, x15, 1
-  sw x15, 0(x9)
+  sc x15, 0(x9)
   ret
 
 #------------------------------------------------------------------------------
@@ -148,7 +148,7 @@ falleziffern: # ( u -- u=0 )
 #------------------------------------------------------------------------------
   push_x1_x10
 
-  li x10, 32
+  li x10, CELLBITS
 
 1:call fziffer
   addi x10, x10, -1
@@ -166,7 +166,7 @@ fziffer: # ( u -- u )
   # Idea: Multiply with base, next digit will be shifted into high-part of multiplication result.
   push x1
     pushdaaddrf base
-    lw x8, 0(x8)
+    lc x8, 0(x8)
     call um_star     # ( After-Decimal-Point Base -- Low High )
     call digitausgeben # ( Low=Still-after-decimal-point Character )
   pop x1
@@ -184,7 +184,7 @@ alleziffern: # ( d-Zahl -- d-Zahl=0 )
 1:call ziffer
   bne x8, zero, 1b
 
-  lw x15, 0(x9)
+  lc x15, 0(x9)
   bne x15, zero, 1b
 
   pop x1
@@ -202,7 +202,7 @@ ziffer: # ( Zahl -- Zahl )
   # behandeln muss. Der Rest ist die Ziffer.
   push x1
     pushdaaddrf base
-    lw x8, 0(x8)   # Base-Low
+    lc x8, 0(x8)   # Base-Low
     pushdaconst 0  # Base-High
     # ( uL uH BaseL BaseH )
     call ud_slash_mod
@@ -232,7 +232,7 @@ zifferstringanfang: # Eröffnet einen neuen Ziffernstring.
       # ( Low High -- )
       # Prints a s31.32 number
 #------------------------------------------------------------------------------
-  pushdaconst 32
+  pushdaconst CELLBITS
   j fdotn
 
 #------------------------------------------------------------------------------
@@ -317,6 +317,6 @@ udot:
 # -----------------------------------------------------------------------------
 dot:
   pushdatos
-  srai x8, x8, 31 # s>d - Turn MSB into 0xffffffff or 0x00000000
+  srai x8, x8, SIGNSHIFT # s>d
   j ddot
 

@@ -75,7 +75,7 @@ digit:  # ( c -- false / u true ) Converts a character into a digit.
   # Do not accept digits greater than current base
 
   laf x15, base
-  lw x15, 0(x15)
+  lc x15, 0(x15)
 
   bgeu x8, x15, 5b # Außerhalb der Basis werden keine Buchstaben als Zahlen akzeptiert.
 
@@ -95,7 +95,7 @@ number: # Tries to convert a string in one of the supported number formats.
   push_x1_x5_x6_x10_x13
 
   laf x15, base
-  lw x15, 0(x15)
+  lc x15, 0(x15)
   push x15
 
 /*
@@ -118,11 +118,22 @@ number: # Tries to convert a string in one of the supported number formats.
   mv x10, x8        # Hole die Stringadresse      Fetch string address
   li x8,  1         # Single length result
   li x13, 1         # Positive Sign
-  li x5, 0         # Clear result low
-  li x6, 0         #              high
+  li x5, 0          # Clear result low
+  li x6, 0          #              high
 
   # ( Single )
 
+  # Check for 'm' style character constants
+
+  li x15, 3
+  bne x11, x15, 1f
+  li x15, 39 # ASCII '
+  lbu x14, 0(x10)
+  bne x14, x15, 1f
+  lbu x14, 2(x10)
+  bne x14, x15, 1f
+    lbu x5, 1(x10)
+    j 4f
 
 1: # Sind noch Zeichen da ?  Any characters left ?
 
@@ -143,21 +154,21 @@ number: # Tries to convert a string in one of the supported number formats.
   bne x12, x15, 2f
     li x15, 10 # Umschalten auf Dezimal
     laf x12, base
-    sw x15, 0(x12)
+    sc x15, 0(x12)
     j 1b
 
 2:li x15, 36   # $ ?
   bne x12, x15, 2f
     li x15, 16 # Umschalten auf Hexadezimal
     laf x12, base
-    sw x15, 0(x12)
+    sc x15, 0(x12)
     j 1b
 
 2:li x15, 37   # % ?
   bne x12, x15, 2f
     li x15, 2 # Umschalten auf Binär
     laf x12, base
-    sw x15, 0(x12)
+    sc x15, 0(x12)
     j 1b
 
 2:li x15, 46   # . ?
@@ -184,7 +195,7 @@ number: # Tries to convert a string in one of the supported number formats.
   #pushda x6 # High
 
   pushdaaddrf base  # Base-Low
-  lw x8, 0(x8)
+  lc x8, 0(x8)
 
   pushdaconst 0 # Base-High
 
@@ -214,13 +225,13 @@ number: # Tries to convert a string in one of the supported number formats.
     #popda x6
     #popda x5
 
-3:addi x9, x9, -4
-  sw x5, 0(x9)  # Low or single result
+3:addi x9, x9, -CELL
+  sc x5, 0(x9)  # Low or single result
 
   li x15, 1  # Check length of result
   beq x8, x15, 3f
-    addi x9, x9, -4
-    sw x6, 0(x9) # High result
+    addi x9, x9, -CELL
+    sc x6, 0(x9) # High result
 
 3:j 6f
 
@@ -230,7 +241,7 @@ number: # Tries to convert a string in one of the supported number formats.
 6: # Finished. Restore base and return.
   pop x15
   laf x14, base
-  sw x15, 0(x14)
+  sc x15, 0(x14)
 
   pop_x1_x5_x6_x10_x13
   ret
@@ -261,10 +272,10 @@ number_nachkommastellen: # Digits after the decimal point.
 
   # Zeichen wurde gemocht.  Character has been successfully converted to a digit.
 
-  addi x9, x9, -4
-  sw x5, 0(x9) # Low-Old
+  addi x9, x9, -CELL
+  sc x5, 0(x9) # Low-Old
   pushdaaddrf base
-  lw x8, 0(x8)
+  lc x8, 0(x8)
 
   # ( Old New-Digit Base )
   call um_slash_mod # ( Remainder New.. )

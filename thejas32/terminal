@@ -1,0 +1,3 @@
+#!/bin/bash
+
+picocom -b 115200 /dev/ttyUSB0 --omap delbs,crlf --send-cmd "ascii-xfr -s -l 400 -c 2 -n"

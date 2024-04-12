@@ -346,6 +346,36 @@ fi
 
 # -----------------------------------------------------------------------------
 
+if [[ -z "$1" || "$1" = "linux-rv64im" ]]
+then
+cd mecrisp-quintus-source/linux-rv64im
+./assemble
+mv mecrisp-quintus-linux-rv64im ../../linux-rv64im
+rm *.o *.list
+cd ../..
+
+cd linux-rv64im
+./buildcore-linux-rv64im
+cd ..
+fi
+
+# -----------------------------------------------------------------------------
+
+if [[ -z "$1" || "$1" = "linux-rv64imc" ]]
+then
+cd mecrisp-quintus-source/linux-rv64imc
+./assemble
+mv mecrisp-quintus-linux-rv64imc ../../linux-rv64imc
+rm *.o *.list
+cd ../..
+
+cd linux-rv64imc
+./buildcore-linux-rv64imc
+cd ..
+fi
+
+# -----------------------------------------------------------------------------
+
 if [[ -z "$1" || "$1" = "pic32mx2" ]]
 then
 cd mecrisp-quintus-source/pic32mx270f256b
@@ -415,6 +445,21 @@ cd ..
 cat ../common/conditional.txt                          ../common/disassembler-rv32imc.txt ../common/fixpt-math-lib.fs ../common/dictionary-tools.txt ../common/multitask.txt ../common/multitask-debug.txt cornerstone.fs > included.txt
 ./buildcore ./quintusemu-ch32v203f8p6 mecrisp-quintus-ch32v203f8p6.bin included.txt      mecrisp-quintus-ch32v203f8p6-with-tools.bin
 
+cd ..
+fi
+
+# -----------------------------------------------------------------------------
+
+if [[ -z "$1" || "$1" = "thejas32" ]]
+then
+cd mecrisp-quintus-source/thejas32
+make clean all
+cp *.bin ../../thejas32
+make clean
+cd ../..
+
+cd thejas32
+./buildcore
 cd ..
 fi
 

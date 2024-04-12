@@ -127,7 +127,7 @@ accept: # ( c-addr maxlength -- length ) Collecting your keystrokes !
 
 7: # Return has been pressed: Store string length, print space and leave.
   mv x8, x12
-  pop_x1_x10_x12  
+  pop_x1_x10_x12
   j space
 
 # -----------------------------------------------------------------------------
@@ -144,7 +144,7 @@ tib:
 source_in:
   pushdaaddrf Pufferstand
   ret
-  .word 0
+  .varinit 0
 
 #------------------------------------------------------------------------------
   Definition Flag_visible|Flag_2variable, "current-source" # ( -- addr )
@@ -152,8 +152,8 @@ source_in:
 #------------------------------------------------------------------------------
   pushdaaddrf current_source
   ret
-  .word 0              # Empty TIB for default
-  .word Eingabepuffer
+  .varinit 0              # Empty TIB for default
+  .varinit Eingabepuffer
 
 
 # -----------------------------------------------------------------------------
@@ -161,9 +161,9 @@ source_in:
 setsource:
 # -----------------------------------------------------------------------------
   laf x15, current_source
-  sw x8, 0(x15)
+  sc x8,    0(x15)
   drop
-  sw x8, 4(x15)
+  sc x8, CELL(x15)
   drop
 
   ret
@@ -176,9 +176,9 @@ source:
   laf x10, current_source
 
   pushdatos
-  lw x8, 4(x10)
+  lc x8, CELL(x10)
   pushdatos
-  lw x8, 0(x10)
+  lc x8,    0(x10)
 
   pop x10
   ret
@@ -191,7 +191,7 @@ query: # ( -- ) Nimmt einen String in den Eingabepuffer auf
 
   call source_in # Aktueller Offset in den Eingabepuffer  Zero characters consumed yet
   li x15, 0
-  sw x15, 0(x8)
+  sc x15, 0(x8)
   drop
 
   call tib

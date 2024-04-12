@@ -89,27 +89,27 @@ drop_einsprung:
 # -----------------------------------------------------------------------------
 over_einsprung:
   pushdatos
-  lw x8, 4(x9)
+  lc x8, CELL(x9)
   ret
 
 # -----------------------------------------------------------------------------
   Definition Flag_foldable_2|Flag_inline|Flag_noframe, "tuck" # ( x1 x2 -- x2 x1 x2 )
 # -----------------------------------------------------------------------------
 tuck:
-  lw x15, 0(x9)
-  addi x9, x9, -4
-  sw x8, 4(x9)
-  sw x15, 0(x9)
+  lc x15,   0(x9)
+  addi x9, x9, -CELL
+  sc x8, CELL(x9)
+  sc x15,   0(x9)
   ret
 
 # -----------------------------------------------------------------------------
   Definition Flag_foldable_3, "rot" # ( x w y -- w y x )
 # -----------------------------------------------------------------------------
 rot:
-  lw x15, 0(x9)
-  lw x14, 4(x9)
-  sw x8, 0(x9)
-  sw x15, 4(x9)
+  lc x15,    0(x9)
+  lc x14, CELL(x9)
+  sc x8,     0(x9)
+  sc x15, CELL(x9)
   mv x8, x14
   ret
 
@@ -117,10 +117,10 @@ rot:
   Definition Flag_foldable_3, "-rot" # ( x w y -- y x w )
 # -----------------------------------------------------------------------------
 minusrot:
-  lw x15, 0(x9)
-  lw x14, 4(x9)
-  sw x14, 0(x9)
-  sw x8, 4(x9)
+  lc x15,    0(x9)
+  lc x14, CELL(x9)
+  sc x14,    0(x9)
+  sc x8,  CELL(x9)
   mv x8, x15
   ret
 
@@ -128,9 +128,9 @@ minusrot:
   Definition Flag_inline|Flag_noframe, "pick" # ( xu .. x1 x0 u -- xu ... x1 x0 xu )
 # -----------------------------------------------------------------------------
 pick:
-  sll x8, x8, 2
+  sll x8, x8, CELLSHIFT
   add x8, x8, x9
-  lw x8, 0(x8)
+  lc x8, 0(x8)
   ret
 
 # -----------------------------------------------------------------------------
@@ -141,7 +141,7 @@ pick:
   laf x15, datenstackanfang # Anfang laden  Calculate stack fill gauge
   sub x15, x15, x9          # und aktuellen Stackpointer abziehen
   pushdatos
-  srai x8, x15, 2 # Durch 4 teilen  Divide through 4 Bytes/element.
+  srai x8, x15, CELLSHIFT # Divide through bytes/cell.
   ret
 
 # -----------------------------------------------------------------------------
@@ -151,7 +151,7 @@ pick:
   laf x15, returnstackanfang # Anfang laden  Calculate stack fill gauge
   sub x15, x15, sp          # und aktuellen Stackpointer abziehen
   pushdatos
-  srai x8, x15, 2 # Durch 4 teilen  Divide through 4 Bytes/element.
+  srai x8, x15, CELLSHIFT # Divide through bytes/cell.
   ret
 
 #------------------------------------------------------------------------------
@@ -172,21 +172,21 @@ pick:
   Definition Flag_inline, "r@" # Kopiert das oberste Element des Returnstacks auf den Datenstack
 #------------------------------------------------------------------------------
   pushdatos
-  lw x8, 0(sp)
+  lc x8, 0(sp)
   ret
 
 #------------------------------------------------------------------------------
   Definition Flag_inline, "rdrop" # Entfernt das oberste Element des Returnstacks
 #------------------------------------------------------------------------------
-  addi sp, sp, 4
+  addi sp, sp, CELL
   ret
 
 # -----------------------------------------------------------------------------
   Definition Flag_inline, "rpick" # ( u -- xu R: xu .. x1 x0 -- xu ... x1 x0 )
 # -----------------------------------------------------------------------------
-  sll x8, x8, 2
+  sll x8, x8, CELLSHIFT
   add x8, x8, sp
-  lw x8, 0(x8)
+  lc x8, 0(x8)
   ret
 
 # # -----------------------------------------------------------------------------

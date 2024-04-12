@@ -40,22 +40,22 @@ ddrop_vektor:
 dswap:
 # -----------------------------------------------------------------------------
   mv x15, x8
-  lw x8, 4(x9)
-  sw x15, 4(x9)
+  lc  x8, 1*CELL(x9)
+  sc x15, 1*CELL(x9)
 
-  lw x15, 0(x9)
-  lw x14, 8(x9)
-  sw x15, 8(x9)
-  sw x14, 0(x9)
+  lc x15, 0*CELL(x9)
+  lc x14, 2*CELL(x9)
+  sc x15, 2*CELL(x9)
+  sc x14, 0*CELL(x9)
   ret
 
 # -----------------------------------------------------------------------------
   Definition Flag_foldable_2|Flag_inline|Flag_noframe, "2nip" # ( 4 3 2 1 -- 2 1 )
 dnip:
 # -----------------------------------------------------------------------------
-  lw x15, 0(x9)
-  addi x9, x9, 8
-  sw x15, 0(x9)
+  lc x15, 0(x9)
+  addi x9, x9, 2*CELL
+  sc x15, 0(x9)
   ret
 
 # -----------------------------------------------------------------------------
@@ -67,13 +67,13 @@ dnip:
   #   16 12  8    4  0  t
   # (  4  3  2    1  4  3 )
 
-  addi x9, x9, -8
-  sw x8, 4(x9)
+  addi x9, x9, -2*CELL
+  sc x8,  1*CELL(x9)
 
-  lw x15, 16(x9)
-  sw x15,  0(x9)
+  lc x15, 4*CELL(x9)
+  sc x15, 0*CELL(x9)
 
-  lw x8,  12(x9)
+  lc x8,  3*CELL(x9)
 
   ret
 
@@ -86,21 +86,21 @@ dnip:
   #   16 12  8  4  0  t
   # (  2  1  4  3  2  1 )
 
-  #  x8          # 1
-  lw x14, 0(x9)  # 2
-  #       4(x9)  # 3
-  lw x15, 8(x9)  # 4
+  #  x8               # 1
+  lc x14, 0*CELL(x9)  # 2
+  #       1*CELL(x9)  # 3
+  lc x15, 2*CELL(x9)  # 4
 
-  addi x9, x9, -8 # Zwei Elemente mehr
+  addi x9, x9, -2*CELL # Zwei Elemente mehr
 
-  sw x14,  0(x9)
-  sw x14, 16(x9)
+  sc x14, 0*CELL(x9)
+  sc x14, 4*CELL(x9)
 
-  lw x14, 12(x9)  # Alte Position 4
-  sw x14,  4(x9)
-  sw x15,  8(x9)
+  lc x14, 3*CELL(x9)  # Alte Position 4
+  sc x14, 1*CELL(x9)
+  sc x15, 2*CELL(x9)
 
-  sw  x8, 12(x9)  # Alte Position 4
+  sc  x8, 3*CELL(x9)  # Alte Position 4
 
   ret
 
@@ -109,18 +109,18 @@ dnip:
                                      #  16 12 8 4 0 tos  16 12 8 4 0 tos
 # -----------------------------------------------------------------------------
 
-  lw x15,  0(x9)
-  lw x14,  8(x9)
-  sw x15,  8(x9)
+  lc x15, 0*CELL(x9)
+  lc x14, 2*CELL(x9)
+  sc x15, 2*CELL(x9)
 
-  lw x15, 16(x9)
-  sw x14, 16(x9)
-  sw x15,  0(x9)
+  lc x15, 4*CELL(x9)
+  sc x14, 4*CELL(x9)
+  sc x15, 0*CELL(x9)
 
-  lw x14,  4(x9)
-  sw x8,   4(x9)
-  lw x8,  12(x9)
-  sw x14, 12(x9)
+  lc x14, 1*CELL(x9)
+  sc x8,  1*CELL(x9)
+  lc x8,  3*CELL(x9)
+  sc x14, 3*CELL(x9)
 
   ret
 
@@ -129,18 +129,18 @@ dnip:
                                       #  16 12 8 4 0 tos  16 12 8 4 0 tos
 # -----------------------------------------------------------------------------
 
-  lw x14,  0(x9)
-  lw x15, 16(x9)
-  sw x14, 16(x9)
+  lc x14, 0*CELL(x9)
+  lc x15, 4*CELL(x9)
+  sc x14, 4*CELL(x9)
 
-  lw x14,  8(x9)
-  sw x14,  0(x9)
-  sw x15,  8(x9)
+  lc x14, 2*CELL(x9)
+  sc x14, 0*CELL(x9)
+  sc x15, 2*CELL(x9)
 
-  lw x14, 12(x9)
-  sw x8,  12(x9)
-  lw x8,   4(x9)
-  sw x14,  4(x9)
+  lc x14, 3*CELL(x9)
+  sc x8,  3*CELL(x9)
+  lc x8,  1*CELL(x9)
+  sc x14, 1*CELL(x9)
 
   ret
 
@@ -169,7 +169,7 @@ dnip:
 # -----------------------------------------------------------------------------
   Definition Flag_inline, "2rdrop" # ( -- R: 2 1 -- )
 # -----------------------------------------------------------------------------
-  addi sp, sp, 8
+  addi sp, sp, 2*CELL
   ret
 
 #------------------------------------------------------------------------------
@@ -179,57 +179,57 @@ dnip:
 #------------------------------------------------------------------------------
   Definition Flag_foldable_2, "d2/"
 #------------------------------------------------------------------------------
-  lw x15, 0(x9) # Low
+  lc x15, 0(x9) # Low
 
-  slli x14, x8, 31
+  slli x14, x8, SIGNSHIFT
   srai x8, x8, 1
 
   srli x15, x15, 1
   or x15, x15, x14
 
-  sw x15, 0(x9)
+  sc x15, 0(x9)
   ret
 
 #------------------------------------------------------------------------------
   Definition Flag_foldable_2, "d2*"
 #------------------------------------------------------------------------------
-  lw x15, 0(x9) # Low
+  lc x15, 0(x9) # Low
 
-  srli x14, x15, 31
+  srli x14, x15, SIGNSHIFT
   add x15, x15, x15
 
   add x8, x8, x8
   or x8, x8, x14
 
-  sw x15, 0(x9)
+  sc x15, 0(x9)
   ret
 
 #------------------------------------------------------------------------------
   Definition Flag_foldable_2, "dshr"
 #------------------------------------------------------------------------------
-  lw x15, 0(x9) # Low
+  lc x15, 0(x9) # Low
 
-  slli x14, x8, 31
+  slli x14, x8, SIGNSHIFT
   srli x8, x8, 1
 
   srli x15, x15, 1
   or x15, x15, x14
 
-  sw x15, 0(x9)
+  sc x15, 0(x9)
   ret
 
 #------------------------------------------------------------------------------
   Definition Flag_foldable_2, "dshl"
 #------------------------------------------------------------------------------
-  lw x15, 0(x9) # Low
+  lc x15, 0(x9) # Low
 
-  srli x14, x15, 31
+  srli x14, x15, SIGNSHIFT
   add x15, x15, x15
 
   add x8, x8, x8
   or x8, x8, x14
 
-  sw x15, 0(x9)
+  sc x15, 0(x9)
   ret
 
 #------------------------------------------------------------------------------
@@ -243,11 +243,11 @@ dabs:
   Definition Flag_foldable_2, "dnegate"
 dnegate:
 #------------------------------------------------------------------------------
-  lw x15, 0(x9) # Low
+  lc x15, 0(x9) # Low
   inv x15
   inv x8
   addi x14, x15, 1
-  sw x14, 0(x9)
+  sc x14, 0(x9)
   sltu x15, x14, x15
   add x8, x8, x15
   ret
@@ -274,19 +274,19 @@ dminus:                            #   8  4  0  x8
 #------------------------------------------------------------------------------
   push x10
 
-  lw x15, 8(x9)
-  lw x14, 0(x9)
+  lc x15, 2*CELL(x9)
+  lc x14, 0*CELL(x9)
 
   sub x10, x15, x14
-  sw x10, 8(x9)
+  sc x10, 2*CELL(x9)
 
   sltu x10, x15, x14
 
-  lw x15, 4(x9)
+  lc x15, 1*CELL(x9)
   sub x8, x15, x8
   sub x8, x8, x10
 
-  addi x9, x9, 8
+  addi x9, x9, 2*CELL
 
   pop x10
   ret
@@ -297,19 +297,19 @@ dplus:                             #   8  4  0  x8
 #------------------------------------------------------------------------------
   push x10
 
-  lw x15, 8(x9)
-  lw x14, 0(x9)
+  lc x15, 2*CELL(x9)
+  lc x14, 0*CELL(x9)
 
   add x10, x15, x14
-  sw x10, 8(x9)
+  sc x10, 2*CELL(x9)
 
   sltu x10, x10, x15
 
-  lw x15, 4(x9)
+  lc x15, 1*CELL(x9)
   add x8, x15, x8
   add x8, x8, x10
 
-  addi x9, x9, 8
+  addi x9, x9, 2*CELL
 
   pop x10
   ret
@@ -318,7 +318,7 @@ dplus:                             #   8  4  0  x8
   Definition Flag_foldable_1, "s>d" # ( n - dl dh ) Single --> Double conversion
 #------------------------------------------------------------------------------
   pushdatos
-  srai x8, x8, 31    # Turn MSB into 0xffffffff or 0x00000000
+  srai x8, x8, SIGNSHIFT
   ret
 
 #------------------------------------------------------------------------------
@@ -351,9 +351,9 @@ udm_star: # Unsigned multiply 64*64 = 128
 
   # ( d c b a )
   pushdatos
-  lw x8, 4(x9)    # b
+  lc x8, 1*CELL(x9)   # b
   pushdatos
-  lw x8, 16(x9)   # d
+  lc x8, 4*CELL(x9)   # d
   call um_star
   # ( d c b a  b*d-Low b*d-High )
   popdadouble x11, x10
@@ -363,9 +363,9 @@ udm_star: # Unsigned multiply 64*64 = 128
   # ( d c b a )
 
   pushdatos
-  lw x8, 0(x9)   # a
+  lc x8, 0*CELL(x9)  # a
   pushdatos
-  lw x8, 12(x9)  # c
+  lc x8, 3*CELL(x9)  # c
   call um_star
   # ( d c b a  a*c-Low a*c-High )
   popdadouble x13, x12
@@ -375,9 +375,9 @@ udm_star: # Unsigned multiply 64*64 = 128
   # ( d c b a )
 
   pushdatos
-  lw x8, 0(x9)    # a
+  lc x8, 0*CELL(x9)   # a
   pushdatos
-  lw x8, 16(x9)   # d
+  lc x8, 4*CELL(x9)   # d
 
   call um_star
   # ( d c b a  a*d-Low a*d-High )
@@ -396,9 +396,9 @@ udm_star: # Unsigned multiply 64*64 = 128
   # ( d c b a )
 
   pushdatos
-  lw x8, 4(x9)    # b
+  lc x8, 1*CELL(x9)   # b
   pushdatos
-  lw x8, 12(x9)   # c
+  lc x8, 3*CELL(x9)   # c
 
   call um_star
   # ( d c b a  b*c-Low b*c-High )
@@ -416,9 +416,9 @@ udm_star: # Unsigned multiply 64*64 = 128
 
   # ( d c b tos: a )
   mv x8, x13
-  sw x12, 0(x9)
-  sw x11, 4(x9)
-  sw x10, 8(x9)
+  sc x12, 0*CELL(x9)
+  sc x11, 1*CELL(x9)
+  sc x10, 2*CELL(x9)
 
   pop_x1_x5_x6_x7_x10_x13
   ret
@@ -492,8 +492,8 @@ um_slash_mod: # ( ud u -- u u ) Dividend Divisor -- Rest Ergebnis
 m_slash_mod:  # ( d n -- n n )
 #------------------------------------------------------------------------------
   push x1
-  pushdatos                 # s>d
-  srai x8, x8, 31           # Turn MSB into 0xffffffff or 0x00000000
+  pushdatos               # s>d
+  srai x8, x8, SIGNSHIFT
   call d_slash_mod
   drop
   nip
@@ -517,8 +517,8 @@ uf_slash_mod: # Divide 64/64 = 64 Remainder 64. Puts decimal point in the middle
    push_x10_x13
 
    li x13, 0
-   lw x12, 4(x9)
-   lw x11, 8(x9)
+   lc x12, 1*CELL(x9)
+   lc x11, 2*CELL(x9)
    li x10, 0
 
    j ud_slash_mod_internal
@@ -544,8 +544,8 @@ ud_slash_mod:
 
    li x13, 0
    li x12, 0
-   lw x11, 4(x9)
-   lw x10, 8(x9)
+   lc x11, 1*CELL(x9)
+   lc x10, 2*CELL(x9)
 
    # Divisor-High Divisor-Low
    #         x4          x3
@@ -557,24 +557,24 @@ ud_slash_mod_internal:
     # Repurpose loop registers !
 
    mv x4, x8
-   lw x3, 0(x9)
+   lc x3, 0(x9)
 
    # For this long division, we need 64 individual division steps.
-   li x8, 64
+   li x8, 2*CELLBITS
 
 3:
     # Shift the long chain of four registers.
 
     slli x13, x13, 1
-      srli x15, x12, 31
+      srli x15, x12, SIGNSHIFT
       or x13, x13, x15
 
     slli x12, x12, 1
-      srli x15, x11, 31
+      srli x15, x11, SIGNSHIFT
       or x12, x12, x15
 
     slli x11, x11, 1
-      srli x15, x10, 31
+      srli x15, x10, SIGNSHIFT
       or x11, x11, x15
 
     slli x10, x10, 1
@@ -599,9 +599,9 @@ ud_slash_mod_internal:
 
    # Now place all values to their destination.
    mv x8, x11    # Result-High
-   sw x10, 0(x9) # Result-Low
-   sw x13, 4(x9) # Remainder-High
-   sw x12, 8(x9) # Remainder-Low
+   sc x10, 0*CELL(x9) # Result-Low
+   sc x13, 1*CELL(x9) # Remainder-High
+   sc x12, 2*CELL(x9) # Remainder-Low
 
    pop_x3_x4_x5_x6_x7
 
@@ -710,9 +710,9 @@ f_star: # Signed multiply s31.32
     # ( LL L H HH )
     drop
     # ( LL L H )
-    lw x15, 0(x9)
-    addi x9, x9, 4
-    sw x15, 0(x9)
+    lc x15, 0(x9)
+    addi x9, x9, CELL
+    sc x15, 0(x9)
     # ( L H )
     pop x1
     ret
@@ -730,9 +730,9 @@ f_star: # Signed multiply s31.32
     # ( LL L H HH )
     drop
     # ( LL L H )
-    lw x15, 0(x9)
-    addi x9, x9, 4
-    sw x15, 0(x9)
+    lc x15, 0(x9)
+    addi x9, x9, CELL
+    sc x15, 0(x9)
     # ( L H )
   pop x1
     j dnegate
@@ -785,24 +785,24 @@ f_star: # Signed multiply s31.32
   Definition Flag_visible, "2!" # Store ( d addr -- )
 #------------------------------------------------------------------------------
 
-  lw x15, 0(x9)
-  lw x14, 4(x9)
+  lc x15, 0*CELL(x9)
+  lc x14, 1*CELL(x9)
 
-  sw x15, 0(x8)
-  sw x14, 4(x8)
+  sc x15, 0*CELL(x8)
+  sc x14, 1*CELL(x8)
 
-  lw x8, 8(x9)
-  addi x9, x9, 12
+  lc x8,  2*CELL(x9)
+  addi x9, x9, 3*CELL
 
   ret
 
 #------------------------------------------------------------------------------
   Definition Flag_visible, "2@" # Fetch ( addr -- d )
 #------------------------------------------------------------------------------
-  addi x9, x9, -4
-  lw x15, 4(x8)
-  sw x15, 0(x9)
-  lw x8, 0(x8)
+  addi x9, x9, -CELL
+  lc x15, 1*CELL(x8)
+  sc x15, 0*CELL(x9)
+  lc x8,  0*CELL(x8)
   ret
 
 #------------------------------------------------------------------------------
@@ -815,12 +815,12 @@ Definition Flag_foldable_4, "du<"
 du_less:
   push x10
 
-  lw x15, 8(x9)
-  lw x14, 0(x9)
+  lc x15, 2*CELL(x9)
+  lc x14, 0*CELL(x9)
 
   sltu x10, x15, x14
 
-  lw x15, 4(x9)
+  lc x15, 1*CELL(x9)
 
   sltu x14, x15, x10
   sub  x15, x15, x10
@@ -831,7 +831,7 @@ du_less:
   addi x8, x8, -1
   inv x8
 
-  addi x9, x9, 12
+  addi x9, x9, 3*CELL
   pop x10
   ret
 
@@ -854,9 +854,9 @@ Definition Flag_foldable_4, "d<"
 d_less:
   push_x1_x10_x11
 
-  srai x10, x8, 31
-  lw x11, 4(x9)
-  srai x11, x11, 31
+  srai x10, x8, SIGNSHIFT
+  lc x11, 1*CELL(x9)
+  srai x11, x11, SIGNSHIFT
 
   call du_less
 
@@ -878,15 +878,15 @@ Definition Flag_foldable_4, "d>"  # Just swapped the order of registers
 #------------------------------------------------------------------------------
   Definition Flag_foldable_2|Flag_inline|Flag_noframe, "d0<" # ( 1L 1H -- Flag ) Is double number negative ?
 #------------------------------------------------------------------------------
-  addi x9, x9, 4
-  srai x8, x8, 31    # Turn MSB into 0xffffffff or 0x00000000
+  addi x9, x9, CELL
+  srai x8, x8, SIGNSHIFT
   ret
 
 #------------------------------------------------------------------------------
   Definition Flag_foldable_2, "d0=" # ( 1L 1H -- Flag )
 #------------------------------------------------------------------------------
-  lw x15, 0(x9)
-  addi x9, x9, 4
+  lc x15, 0(x9)
+  addi x9, x9, CELL
   or x8, x8, x15
 
   sltiu x8, x8, 1
@@ -897,13 +897,13 @@ Definition Flag_foldable_4, "d>"  # Just swapped the order of registers
 #------------------------------------------------------------------------------
   Definition Flag_foldable_4, "d<>" # ( 1L 1H 2L 2H -- Flag )
 #------------------------------------------------------------------------------
-  lw x15, 4(x9)
+  lc x15, 1*CELL(x9)
   xor x8, x8, x15
 
-  lw x15, 0(x9)
-  lw x14, 8(x9)
+  lc x15, 0*CELL(x9)
+  lc x14, 2*CELL(x9)
   xor x15, x15, x14
-  addi x9, x9, 12
+  addi x9, x9, 3*CELL
 
   or x8, x8, x15
 
@@ -915,13 +915,13 @@ Definition Flag_foldable_4, "d>"  # Just swapped the order of registers
 #------------------------------------------------------------------------------
   Definition Flag_foldable_4, "d=" # ( 1L 1H 2L 2H -- Flag )
 #------------------------------------------------------------------------------
-  lw x15, 4(x9)
+  lc x15, 1*CELL(x9)
   xor x8, x8, x15
 
-  lw x15, 0(x9)
-  lw x14, 8(x9)
+  lc x15, 0*CELL(x9)
+  lc x14, 2*CELL(x9)
   xor x15, x15, x14
-  addi x9, x9, 12
+  addi x9, x9, 3*CELL
 
   or x8, x8, x15
 
@@ -934,37 +934,37 @@ Definition Flag_foldable_4, "d>"  # Just swapped the order of registers
   Definition Flag_foldable_3, "2lshift"
 #------------------------------------------------------------------------------
 
-  andi x8, x8, 63 # Auch Doppeltschübe seien zyklisch
+  andi x8, x8, 2*CELLBITS-1 # Auch Doppeltschübe seien zyklisch
   beq x8, zero, dshift_drop
 
-  addi x14, x8, -32 # Fallunterscheidung, ob 32 oder mehr Stellen geschoben werden sollen
+  addi x14, x8, -CELLBITS # Fallunterscheidung, ob 32 oder mehr Stellen geschoben werden sollen
   blt x14, zero, dlshift_short
 
   # 32 oder mehr Stellen weit schieben:
 
-  lw x15, 4(x9)
+  lc x15, 1*CELL(x9)
   sll x8, x15, x14
-  addi x9, x9, 4
-  sw zero, 0(x9)
+  addi x9, x9, CELL
+  sc zero, 0(x9)
   ret
 
 dlshift_short:  # 31 oder weniger Stellen weit schieben
 
-  lw  x15, 4(x9)    # Low-Teil zuerst
-  sll x14, x15, x8  # Low << n
-  sw  x14, 4(x9)
+  lc  x15, 1*CELL(x9) # Low-Teil zuerst
+  sll x14, x15, x8    # Low << n
+  sc  x14, 1*CELL(x9)
 
   # Low in x15 enthalten, jetzt den High-Teil in Angriff nehmen:
 
-  li  x14, 32
+  li  x14, CELLBITS
   sub x14, x14, x8
   srl x15, x15, x14    # Low >> 32-n
 
-  lw  x14, 0(x9)
+  lc  x14, 0(x9)
   sll x8, x14, x8
   or  x8, x8, x15
 
-  addi x9, x9, 4
+  addi x9, x9, CELL
   ret
 
 
@@ -972,37 +972,37 @@ dlshift_short:  # 31 oder weniger Stellen weit schieben
   Definition Flag_foldable_3, "2rshift"
 #------------------------------------------------------------------------------
 
-  andi x8, x8, 63 # Auch Doppeltschübe seien zyklisch
+  andi x8, x8, 2*CELLBITS-1 # Auch Doppeltschübe seien zyklisch
   beq x8, zero, dshift_drop
 
-  addi x14, x8, -32 # Fallunterscheidung, ob 32 oder mehr Stellen geschoben werden sollen
+  addi x14, x8, -CELLBITS # Fallunterscheidung, ob 32 oder mehr Stellen geschoben werden sollen
   blt x14, zero, drshift_short
 
   # 32 oder mehr Stellen weit schieben:
 
-  lw x15, 0(x9)  # High-Teil laden
+  lc x15, 0(x9)  # High-Teil laden
   srl x15, x15, x14
-  addi x9, x9, 4
-  sw x15, 0(x9)  # Als Low-Teil speichern
+  addi x9, x9, CELL
+  sc x15, 0(x9)  # Als Low-Teil speichern
   li x8, 0
   ret
 
 drshift_short:  # 31 oder weniger Stellen weit schieben
 
-  lw  x15, 0(x9)    # High-Teil zuerst
+  lc  x15, 0(x9)    # High-Teil zuerst
   srl x14, x15, x8  # High >> n
-  sw  x14, 0(x9)
+  sc  x14, 0(x9)
 
   # High in x15 enthalten, jetzt den Low-Teil in Angriff nehmen:
 
-  li  x14, 32
+  li  x14, CELLBITS
   sub x14, x14, x8
   sll x15, x15, x14    # High << 32-n
 
-  lw  x14, 4(x9)
+  lc  x14, 1*CELL(x9)
   srl x14, x14, x8
   or  x14, x14, x15
-  sw  x14, 4(x9)
+  sc  x14, 1*CELL(x9)
 
   drop
   ret
@@ -1011,38 +1011,38 @@ drshift_short:  # 31 oder weniger Stellen weit schieben
   Definition Flag_foldable_3, "2arshift"
 #------------------------------------------------------------------------------
 
-  andi x8, x8, 63 # Auch Doppeltschübe seien zyklisch
+  andi x8, x8, 2*CELLBITS-1 # Auch Doppeltschübe seien zyklisch
   beq x8, zero, dshift_drop
 
-  addi x14, x8, -32 # Fallunterscheidung, ob 32 oder mehr Stellen geschoben werden sollen
+  addi x14, x8, -CELLBITS # Fallunterscheidung, ob 32 oder mehr Stellen geschoben werden sollen
   blt x14, zero, darshift_short
 
   # 32 oder mehr Stellen weit schieben:
 
-  lw x15, 0(x9)  # High-Teil laden
-  sra x8, x15, 31
+  lc x15, 0(x9)  # High-Teil laden
+  sra x8, x15, SIGNSHIFT
   sra x15, x15, x14
-  addi x9, x9, 4
-  sw x15, 0(x9)  # Als Low-Teil speichern
+  addi x9, x9, CELL
+  sc x15, 0(x9)  # Als Low-Teil speichern
 
   ret
 
 darshift_short:  # 31 oder weniger Stellen weit schieben
 
-  lw  x15, 0(x9)    # High-Teil zuerst
+  lc  x15, 0(x9)    # High-Teil zuerst
   sra x14, x15, x8  # High >> n
-  sw  x14, 0(x9)
+  sc  x14, 0(x9)
 
   # High in x15 enthalten, jetzt den Low-Teil in Angriff nehmen:
 
-  li  x14, 32
+  li  x14, CELLBITS
   sub x14, x14, x8
   sll x15, x15, x14    # High << 32-n
 
-  lw  x14, 4(x9)
+  lc  x14, 1*CELL(x9)
   srl x14, x14, x8
   or  x14, x14, x15
-  sw  x14, 4(x9)
+  sc  x14, 1*CELL(x9)
 
 dshift_drop:
   drop

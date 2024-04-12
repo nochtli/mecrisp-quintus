@@ -23,8 +23,8 @@
   Definition Flag_foldable_2|Flag_opcodierbar|Flag_inline|Flag_noframe, "+" # ( x1 x2 -- x1+x2 )
                       # Adds x1 and x2.
 # -----------------------------------------------------------------------------
-  lw x15, 0(x9)
-  addi x9, x9, 4
+  lc x15, 0(x9)
+  addi x9, x9, CELL
   add x8, x15, x8
   ret
 
@@ -50,11 +50,11 @@ opcodiereinsprung_signed:
   push x1
   pushdouble x14, x15
 
-  # Probe, ob sich die Konstante in einen einzigen Opcode passt:
+  # Probe, ob die Konstante in einen einzigen Opcode passt:
   .ifdef mipscore
   li x15, 0xFFFF8000
   .else
-  li x15, 0xFFFFF800
+  li x15, -2048 # 0xFFFFF800
   .endif
   and x14, x8, x15
   beq x14, x15,  opcodiereinsprung_kurz
@@ -68,8 +68,8 @@ opcodiereinsprung_kurz: # Kurze Variante mit nur einem Opcode.
     sll x8, x8, 20
   .endif
 
-  lw x15, 4(sp)
-  addi sp, sp, 8
+  lc x15, CELL(sp)
+  addi sp, sp, 2*CELL
 
   or  x8, x8, x15
   j 3f
@@ -80,19 +80,19 @@ opcodiereinsprung_lang: # Lange Variante mit zwei Opcodes.
   call registerliteralkomma
 
   pushdatos
-  lw x8, 0(sp)
-  addi sp, sp, 8
+  lc x8, 0(sp)
+  addi sp, sp, 2*CELL
 
 3:pop x1
-  j komma
+  j wkomma
 
 # -----------------------------------------------------------------------------
   Definition Flag_foldable_2|Flag_opcodierbar|Flag_inline|Flag_noframe, "-" # ( x1 x2 -- x1-x2 )
                       # Subtracts x2 from x1.
 # -----------------------------------------------------------------------------
 minus:
-  lw x15, 0(x9)
-  addi x9, x9, 4
+  lc x15, 0(x9)
+  addi x9, x9, CELL
   sub x8, x15, x8
   ret
 
@@ -103,12 +103,48 @@ minus:
   addi x8, x8, 1
   j opcodiereinsprung_plus
 
+.ifdef RV64
+
+# -----------------------------------------------------------------------------
+  Definition Flag_foldable_2|Flag_opcodierbar|Flag_inline|Flag_noframe, "w+" # ( x1 x2 -- x1-x2 )
+# -----------------------------------------------------------------------------
+  lc x15, 0(x9)
+  addi x9, x9, CELL
+  addw x8, x15, x8
+  ret
+
+  # ---------------------------------------------
+  #  Opcodier-Einsprung:
+
+opcodiereinsprung_wplus:
+
+  li x14, 0x0000001B | reg_tos << 7  | reg_tos << 15                  # addiw x8, x8, ...
+  li x15, 0x0000003B | reg_tos << 7  | reg_tos << 15 | reg_tmp1 << 20 # addw  x8, x8, x15
+
+  j opcodiereinsprung_signed
+
+# -----------------------------------------------------------------------------
+  Definition Flag_foldable_2|Flag_opcodierbar|Flag_inline|Flag_noframe, "w-" # ( x1 x2 -- x1-x2 )
+# -----------------------------------------------------------------------------
+  lc x15, 0(x9)
+  addi x9, x9, CELL
+  subw x8, x15, x8
+  ret
+
+  # ---------------------------------------------
+  #  Opcodier-Einsprung:
+
+  inv x8
+  addi x8, x8, 1
+  j opcodiereinsprung_wplus
+
+.endif
 
 # -----------------------------------------------------------------------------
   Definition Flag_foldable_2|Flag_opcodierbar|Flag_inline|Flag_noframe, "slt" # ( x1 x2 -- 0 | 1 )
 # -----------------------------------------------------------------------------
-  lw x15, 0(x9)
-  addi x9, x9, 4
+  lc x15, 0(x9)
+  addi x9, x9, CELL
   slt x8, x15, x8
   ret
 
@@ -132,8 +168,8 @@ minus:
 # -----------------------------------------------------------------------------
   Definition Flag_foldable_2|Flag_opcodierbar|Flag_inline|Flag_noframe, "sltu" # ( x1 x2 -- 0 | 1 )
 # -----------------------------------------------------------------------------
-  lw x15, 0(x9)
-  addi x9, x9, 4
+  lc x15, 0(x9)
+  addi x9, x9, CELL
   sltu x8, x15, x8
   ret
 
@@ -185,7 +221,7 @@ minus:
 # -----------------------------------------------------------------------------
   Definition Flag_foldable_1|Flag_inline|Flag_noframe, "cell+" # ( x -- x+4 )
 # -----------------------------------------------------------------------------
-  addi x8, x8, 4
+  addi x8, x8, CELL
   ret
 
 # -----------------------------------------------------------------------------
@@ -215,7 +251,7 @@ minus:
 # -----------------------------------------------------------------------------
   Definition Flag_foldable_1|Flag_inline|Flag_noframe, "cells" # ( x -- 4*x )
 # -----------------------------------------------------------------------------
-  slli x8, x8, 2
+  slli x8, x8, CELLSHIFT
   ret
 
 # -----------------------------------------------------------------------------
@@ -227,7 +263,7 @@ minus:
 # -----------------------------------------------------------------------------
   Definition Flag_foldable_1|Flag_inline|Flag_noframe, "abs" # ( n1 -- |n1| )
 # -----------------------------------------------------------------------------
-  srai x15, x8, 31 # Turn MSB into 0xffffffff or 0x00000000
+  srai x15, x8, SIGNSHIFT
   add x8, x8, x15
   xor x8, x8, x15
   ret
@@ -246,7 +282,7 @@ minus:
   pushdatos
   laf x8, base
   ret
-  .word 10
+  .varinit 10
 
 # -----------------------------------------------------------------------------
   Definition Flag_visible, "binary" # ( -- )
@@ -265,5 +301,5 @@ minus:
 # -----------------------------------------------------------------------------
   li x15, 16
 1:laf x14, base
-  sw x15, 0(x14)
+  sc x15, 0(x14)
   ret

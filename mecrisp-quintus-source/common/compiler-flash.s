@@ -26,8 +26,10 @@ smudge:
 # -----------------------------------------------------------------------------
   push x1
 
-  .ifdef compressed_isa
-    call align4komma # Align on 4 to make sure the last opcode is actually written to Flash and to fullfill ANS requirement.
+  call align4komma # Align on 4 to make sure the last compressed opcode is actually written to Flash and to fullfill ANS requirement.
+
+  .ifdef RV64
+    call align8komma
   .endif
 
   call compiletoramq
@@ -50,26 +52,30 @@ smudge:
     # To prevent it a zero is applied at the end in this case.
 
     call here
-    lw x15, -4(x8)
-    li x14, erasedword
+    lc x15, -CELL(x8)
+    li x14, erasedcell
     drop
     bne x15, x14, 1f
       # writeln "Füge in Smudge eine Enderkennungs-Null ein."
-      pushdaconst writtenword
-      call komma
+      pushdaconst writtencell
+      call wkomma
 1:  # Okay, Ende gut, alles gut. Fine :-)
 
     # Brenne die gesammelten Flags:  Flash in the collected Flags:
     pushdatos
     laf x8, FlashFlags
-    lw x8, 0(x8)
+    lc x8, 0(x8)
 
     pushdatos
     laf x8, Fadenende
-    lw x8, 0(x8)
-    addi x8, x8, 4 # Skip Link field
+    lc x8, 0(x8)
+    addi x8, x8, CELL # Skip Link field
 
-    call flashstore
+    .ifdef RV64
+      call dflashstore
+    .else
+      call flashstore
+    .endif
 
     .ifdef flushflash
       call flushflash
@@ -91,8 +97,8 @@ setflags: # Setflags collects the Flags if compiling for Flash, because we can w
           # For RAM, the bits are simply set directly.
 # -----------------------------------------------------------------------------
 
-  li x14, Flag_undefined >> 5 # Sichtbarkeit entfernen  Remove visibility
-  bne x14, x8, 1f             # Flag gültig ?           Flag valid ?
+  li x14, (Flag_undefined >> 5) & 0xFFFFFFFF # Sichtbarkeit entfernen  Remove visibility
+  bne x14, x8, 1f                            # Flag gültig ?           Flag valid ?
 
     la x8, checksums
     j dotnfuesschen
@@ -107,9 +113,9 @@ setflags_intern:
   # -----------------------------------------------------------------------------
   # Setflags for Flash
   laf x14, FlashFlags
-  lw x15, 0(x14)
+  lc x15, 0(x14)
   or x15, x15, x8  # Flashflags beginnt von create aus immer mit "Sichtbar" = 0.
-  sw x15, 0(x14)
+  sc x15, 0(x14)
   drop
   pop x1
   ret
@@ -120,8 +126,8 @@ setflags_ram:
 
   # Hole die Flags des aktuellen Wortes   Fetch flags of current definition
   laf x14, Fadenende # Variable containing pointer to current definition
-  lw x14, 0(x14)     # Address of current definition
-  lw x15, 4(x14)      # Flags des zuletzt definierten Wortes holen  Fetch its Flags
+  lc x14,    0(x14)  # Address of current definition
+  lc x15, CELL(x14)  # Flags des zuletzt definierten Wortes holen  Fetch its Flags
 
   push x10
   li x10, -1
@@ -130,7 +136,7 @@ setflags_ram:
 1:  or x15, x15, x8 # Hinzuverodern, falls schon Flags da sind          If there already are Flags, OR them together.
   pop x10
 
-  sw x15, 4(x14)
+  sc x15, CELL(x14)
   drop
   pop x1
   ret
@@ -143,6 +149,12 @@ aligned:
   add x8, x8, x15
   andi x15, x8, 2
   add x8, x8, x15
+
+  .ifdef RV64
+  andi x15, x8, 4
+  add x8, x8, x15
+  .endif
+
   ret
 
 # -----------------------------------------------------------------------------
@@ -151,7 +163,7 @@ here: # Gibt den Dictionarypointer zurück
 # -----------------------------------------------------------------------------
   pushdatos    # Platz auf dem Datenstack schaffen
   laf x8, Dictionarypointer
-  lw x8, 0(x8) # Hole den Dictionarypointer
+  lc x8, 0(x8) # Hole den Dictionarypointer
   ret
 
 # -----------------------------------------------------------------------------
@@ -160,7 +172,7 @@ flashvarhere:
 # -----------------------------------------------------------------------------
   pushdatos
   laf x8, VariablenPointer
-  lw x8, 0(x8)
+  lc x8, 0(x8)
   ret
 
 # -----------------------------------------------------------------------------
@@ -199,8 +211,8 @@ align8komma: # Macht den Dictionarypointer auf 8 gerade
   andi x8, x8, 4
   beq x8, zero, 1f
 
-    li x8, writtenword
-    call komma
+    li x8, 0x00000013 # nop Opcode
+    call wkomma
     j 2f
 
 1:drop
@@ -210,10 +222,38 @@ align8komma: # Macht den Dictionarypointer auf 8 gerade
 
   .ifdef compressed_isa
 
+.ifdef RV64
+# -----------------------------------------------------------------------------
+  Definition Flag_visible, "align" # ( -- )
+align8komma: # Macht den Dictionarypointer auf 8 gerade
+# -----------------------------------------------------------------------------
+  push x1
+
+  call align4komma
+
+  call here
+  andi x8, x8, 4
+  beq x8, zero, 1f
+
+    li x8, 0x00000013 # nop Opcode
+    call wkomma
+    j 2f
+
+1:drop
+2:pop x1
+  ret
+
+# -----------------------------------------------------------------------------
+  Definition Flag_visible, "align4" # ( -- )
+align4komma: # Macht den Dictionarypointer auf 4 gerade
+# -----------------------------------------------------------------------------
+.else
 # -----------------------------------------------------------------------------
   Definition Flag_visible, "align" # ( -- )
 align4komma: # Macht den Dictionarypointer auf 4 gerade
 # -----------------------------------------------------------------------------
+.endif
+
   push x1
 
   call here
@@ -222,7 +262,7 @@ align4komma: # Macht den Dictionarypointer auf 4 gerade
   andi x15, x8, 1
   add x8, x8, x15
   laf x14, Dictionarypointer
-  sw x8, 0(x14)
+  sc x8, 0(x14)
 
   # Alignment for h,
   andi x8, x8, 2
@@ -284,10 +324,20 @@ hkomma_ram:
 1:pop x1
   ret
 
+
+.ifdef RV64
+# -----------------------------------------------------------------------------
+  Definition Flag_visible, "w," # ( x -- )
+wkomma: # Fügt 32 Bits an das Dictionary an  Write 32 bits in Dictionary
+# -----------------------------------------------------------------------------
+.else
 # -----------------------------------------------------------------------------
   Definition Flag_visible, "," # ( x -- )
-komma: # Fügt 32 Bits an das Dictionary an  Write 32 bits in Dictionary
+wkomma: # Fügt 32 Bits an das Dictionary an  Write 32 bits in Dictionary
+cellkomma:
 # -----------------------------------------------------------------------------
+.endif
+
   push x1
   dup
   call hkomma
@@ -297,16 +347,50 @@ komma: # Fügt 32 Bits an das Dictionary an  Write 32 bits in Dictionary
 
   .else # compressed_isa
 
+.ifdef RV64
+# -----------------------------------------------------------------------------
+  Definition Flag_visible, "align" # ( -- )
+align8komma: # Macht den Dictionarypointer auf 8 gerade
+# -----------------------------------------------------------------------------
+  push x1
+
+  call align4komma
+
+  call here
+  andi x8, x8, 4
+  beq x8, zero, 1f
+
+    # li x8, writtencell
+    li x8, 0x00000013 # nop Opcode
+    call wkomma
+    j 2f
+
+1:drop
+2:pop x1
+  ret
+
+# -----------------------------------------------------------------------------
+  Definition Flag_visible, "align4" # ( -- )
+align4komma: # Macht den Dictionarypointer auf 4 gerade
+# -----------------------------------------------------------------------------
+.else
 # -----------------------------------------------------------------------------
   Definition Flag_visible, "align" # ( -- )
 align4komma: # Macht den Dictionarypointer auf 4 gerade
 # -----------------------------------------------------------------------------
-  push x1  # Eigentlich nichts zu tun, vom Kern aus immer auf 4 gerade.
+.endif
 
+  push x1  # Eigentlich nichts zu tun, vom Kern aus immer auf 4 gerade.
+           # Es könnte aber sein dass der Benutzer ein allot verwendet hat.
   call here
-  call aligned
+
+  andi x15, x8, 1
+  add x8, x8, x15
+  andi x15, x8, 2
+  add x8, x8, x15
+
   laf x14, Dictionarypointer
-  sw x8, 0(x14)
+  sc x8, 0(x14)
   drop
 
   pop x1
@@ -317,12 +401,21 @@ kommairgendwo: # ( x addr -- ) For backpatching of jump opcodes.
 # -----------------------------------------------------------------------------
   push x1
   dup
-  j komma_intern
+  j wkomma_intern
 
+.ifdef RV64
+# -----------------------------------------------------------------------------
+  Definition Flag_visible, "w," # ( x -- )
+wkomma: # Fügt 32 Bits an das Dictionary an  Write 32 bits in Dictionary
+# -----------------------------------------------------------------------------
+.else
 # -----------------------------------------------------------------------------
   Definition Flag_visible, "," # ( x -- )
-komma: # Fügt 32 Bits an das Dictionary an  Write 32 bits in Dictionary
+wkomma: # Fügt 32 Bits an das Dictionary an  Write 32 bits in Dictionary
+cellkomma:
 # -----------------------------------------------------------------------------
+.endif
+
   push x1
 
 #  write "Komma: "
@@ -336,7 +429,7 @@ komma: # Fügt 32 Bits an das Dictionary an  Write 32 bits in Dictionary
   dup
   call four_allot
 
-komma_intern:
+wkomma_intern:
   call addrinflash
   popda x15
   beq x15, zero, komma_ram
@@ -354,6 +447,21 @@ komma_ram:
 1:pop x1
   ret
 
+  .endif # compressed_isa
+
+  .ifdef RV64
+
+# -----------------------------------------------------------------------------
+  Definition Flag_visible, "," # ( x -- )
+cellkomma: # Fügt 64 Bits an das Dictionary an  Write 64 bits in Dictionary
+# -----------------------------------------------------------------------------
+  push x1
+  dup
+  call wkomma
+  srli x8, x8, 32
+  pop x1
+  j wkomma
+
   .endif
 
 #------------------------------------------------------------------------------
@@ -364,9 +472,9 @@ allot:  # Überprüft auch gleich, ob ich mich noch im Ram befinde.
 
 #   # Simple variant without any checks.
 #   li x14, Dictionarypointer
-#   lw x15, 0(x14)
+#   lc x15, 0(x14)
 #   add x15, x15, x8
-#   sw x15, 0(x14)
+#   sc x15, 0(x14)
 #   drop
 #   ret
 
@@ -380,7 +488,7 @@ allot:  # Überprüft auch gleich, ob ich mich noch im Ram befinde.
 
 allot_flash:
   laf x14, Dictionarypointer
-  lw x15, 0(x14)
+  lc x15, 0(x14)
   add x15, x15, x10
 
   laf x10, FlashDictionaryEnde
@@ -393,7 +501,7 @@ allot_ram:
   call flashvarhere         # Am Ende des RAMs liegen die Variablen. Diese sind die Ram-Voll-Grenze...
                             # There are variables defined in Flash at the end of RAM. Don't overwrite them !
   laf x14, Dictionarypointer
-  lw x15, 0(x14)
+  lc x15, 0(x14)
   add x15, x15, x10
 
   bltu x15, x8, 1f
@@ -402,7 +510,7 @@ allot_ram:
 
 1:drop
 
-2:sw x15, 0(x14)
+2:sc x15, 0(x14)
   pop_x1_x10
   ret
 
@@ -424,13 +532,13 @@ four_allot:
   # Set dictionary pointer into RAM first
   laf x14, Dictionarypointer
   laf x15, RamDictionaryAnfang
-  sw x15, 0(x14)
+  sc x15, 0(x14)
 
   # Fadenende fürs RAM vorbereiten
   # Set latest for RAM
   laf x14, Fadenende
   la x15, CoreDictionaryAnfang
-  sw x15, 0(x14)
+  sc x15, 0(x14)
 
   pop x1
   ret
@@ -458,8 +566,8 @@ compiletoram:
 
   # Befinde mich im Flash. Prüfe auf Kollisionen der Variablen mit dem RAM-Dictionary und schalte um !
   laf x14, Dictionarypointer
-  lw x15,  4(x14) # ZweitDictionaryPointer
-  lw x14, 16(x14) # VariablenPointer
+  lc x15, 1*CELL(x14) # ZweitDictionaryPointer
+  lc x14, 4*CELL(x14) # VariablenPointer
 
   bltu x15, x14, Zweitpointertausch
    writeln " Variables collide with dictionary"
@@ -469,15 +577,15 @@ Zweitpointertausch:
 
     laf x8, Dictionarypointer
 
-    lw x14,  0(x8) # Dictionarypointer
-    lw x15,  4(x8) # ZweitDictionaryPointer
-    sw x14,  4(x8)
-    sw x15,  0(x8)
+    lc x14, 0*CELL(x8) # Dictionarypointer
+    lc x15, 1*CELL(x8) # ZweitDictionaryPointer
+    sc x14, 1*CELL(x8)
+    sc x15, 0*CELL(x8)
 
-    lw x14,  8(x8) # Fadenende
-    lw x15, 12(x8) # ZweitFadenende
-    sw x14, 12(x8)
-    sw x15,  8(x8)
+    lc x14, 2*CELL(x8) # Fadenende
+    lc x15, 3*CELL(x8) # ZweitFadenende
+    sc x14, 3*CELL(x8)
+    sc x15, 2*CELL(x8)
 
   li x8, 0 # Trick: Allot will check for collisions, too, and reports RAM full then.
   pop x1
@@ -547,8 +655,10 @@ create: # Nimmt das nächste Token aus dem Puffer,
     write ". "
 2:
 
-  .ifdef compressed_isa
-    call align4komma
+  call align4komma
+
+  .ifdef RV64
+    call align8komma
   .endif
 
   # ( Tokenadresse Länge )
@@ -562,7 +672,7 @@ create: # Nimmt das nächste Token aus dem Puffer,
 
   laf x14, FlashFlags
   li x15, Flag_visible
-  sw x15, 0(x14) # Flags vorbereiten  Prepare Flags for collecting
+  sc x15, 0(x14) # Flags vorbereiten  Prepare Flags for collecting
 
   .ifdef flash8bytesblockwrite
     call align8komma  # Vorrücken auf die nächste passende Schreibstelle
@@ -573,7 +683,7 @@ create: # Nimmt das nächste Token aus dem Puffer,
   call here
   # ( Tokenadresse Länge Neue-Linkadresse )
 
-  pushdaconst 8 # Lücke für die Flags und Link lassen  Leave space for Flags and Link - they are not known yet at this time.
+  pushdaconst 2*CELL # Lücke für die Flags und Link lassen  Leave space for Flags and Link - they are not known yet at this time.
   call allot
 
   call minusrot
@@ -585,20 +695,24 @@ create: # Nimmt das nächste Token aus dem Puffer,
   # Insert Link to fresh definition into old latest if there is still -1 in its Link field:
 
   laf x10, Fadenende # Hole das aktuelle Fadenende  Fetch old latest
-  lw x11, 0(x10)
+  lc x11, 0(x10)
 
-  lw x12, 0(x11) # Inhalt des Link-Feldes holen  Check if Link is set
+  lc x12, 0(x11) # Inhalt des Link-Feldes holen  Check if Link is set
 
-  li x13, erasedword
+  li x13, erasedcell
   bne x12, x13, 1f # Ist der Link ungesetzt ?      Isn't it ?
 
     dup
     pushda x11
+    .ifdef RV64
+    call dflashstore
+    .else
     call flashstore
+    .endif
 
 1:# Backlink fertig gesetzt.  Finished Backlinking.
   # Fadenende aktualisieren:  Set fresh latest.
-  sw x8, 0(x10) # Neues-Fadenende in die Fadenende-Variable legen
+  sc x8, 0(x10) # Neues-Fadenende in die Fadenende-Variable legen
   drop
 
   j create_ende
@@ -612,16 +726,16 @@ create_ram:
 
     # Link setzen  Write Link
     pushdaaddrf Fadenende
-    lw x8, 0(x8)
-    call komma # Das alte Fadenende hinein   Old latest
+    lc x8, 0(x8)
+    call cellkomma # Das alte Fadenende hinein   Old latest
 
   laf x14, Fadenende # Das Fadenende aktualisieren  Set new latest
-  sw x8, 0(x14)
+  sc x8, 0(x14)
   drop
 
   # Flags setzen  Set initial Flags to Invisible.
   pushdaconst Flag_invisible
-  call komma
+  call cellkomma
 
   # Den Namen schreiben  Write Name
   call stringkomma
@@ -630,7 +744,7 @@ create_ende: # Save code entry point of current definition for recurse and dodoe
 
   call here
   laf x14, Einsprungpunkt
-  sw x8, 0(x14)
+  sc x8, 0(x14)
   drop
 
   pop x1
@@ -662,20 +776,20 @@ nvariable: # Creates an initialised variable of given length.
   # -----------------------------------------------------------------------------
   # Variable Flash
 
-  andi x8, x8, 0x0F    # Maximum length for flash variables ! Limit is important to not break Flags for catchflashpointers.
-  push x8              # Save the amount of cells for generating flags for catchflashpointers later
-  slli x8, x8, 2       # Multiply number of elements with 4 to get byte count
+  andi x8, x8, 0x0F      # Maximum length for flash variables ! Limit is important to not break Flags for catchflashpointers.
+  push x8                # Save the amount of cells for generating flags for catchflashpointers later
+  slli x8, x8, CELLSHIFT # Multiply number of elements with bytes per cell
 
   call variable_buffer_flash_prepare
   call retkomma
 
-    popda x10          # Fetch amount of bytes
-    beq x10, zero, 2f  # If nvariable is called with length zero... Maybe this could be useful sometimes.
+    popda x10            # Fetch amount of bytes
+    beq x10, zero, 2f    # If nvariable is called with length zero... Maybe this could be useful sometimes.
 
-1:  sw x8, (x11)       # Initialize RAM location
-    addi x11, x11, 4   # Advance address
-    call komma         # Put initialisation value for catchflashpointers in place.
-    addi x10, x10, -4
+1:  sc x8, (x11)         # Initialize RAM location
+    addi x11, x11, CELL  # Advance address
+    call cellkomma       # Put initialisation value for catchflashpointers in place.
+    addi x10, x10, -CELL
     bne x10, zero, 1b
 2:  # Finished.
 
@@ -703,7 +817,7 @@ nvariable: # Creates an initialised variable of given length.
   call retkomma
 
   # Write desired size of buffer at the end of the definition
-  call komma
+  call cellkomma
 
   pushdaconst Flag_buffer_foldable  # Finally (!) set Flags for buffer usage.
 
@@ -716,13 +830,13 @@ variable_buffer_flash_prepare:
     # Variablenpointer erniedrigen und zurückschreiben   Decrement variable pointer
 
   laf x10, VariablenPointer
-  lw x11, 0(x10)
+  lc x11, 0(x10)
   sub x11, x11, x8  # Ram voll ?  Maybe insert a check for enough RAM left ?
     laf x14, RamDictionaryAnfang
     bge x11, x14, 1f
       writeln "Not enough RAM"
       j quit
-1:sw x11, 0(x10)
+1:sc x11, 0(x10)
 
   # Code schreiben:  Write code
   pushda x11
@@ -737,7 +851,7 @@ variable_ram:
   popda x10 # Amount of cells to write is in TOS.
   beq x10, zero, variable_buffer_ram_finalise # If nvariable is called with length zero... Maybe this could be useful sometimes.
 
-1:call komma
+1:call cellkomma
   addi x10, x10, -1
   bne x10, zero, 1b
 
@@ -773,16 +887,28 @@ variable_buffer_ram_prepare:
   .ifdef mipscore
 
   pushdaconst 0x03E00009 | reg_tos << 11 # jalr x8, x1
-  call komma
+  call wkomma
   pushdaconst 0x00000000 # nop
   pop x1
-  j komma
+  j wkomma
 
   .else
 
+  .ifdef RV64
+
+    # Auf 8-ungerade ausrichten, damit es mit dem jalr-Opcode dann stimmt.
+    call here
+    andi x8, x8, 4
+    bne x8, zero, 1f
+      pushdaconst 0x00000013 # nop Opcode
+      call wkomma
+1:  drop
+
+  .endif
+
   pushdaconst 0x00008067 | reg_tos << 7 # Opcode for jalr x8, x1, 0
   pop x1
-  j komma
+  j wkomma
 
   .endif
 
@@ -807,7 +933,7 @@ dictionarystart: # ( -- Startadresse des aktuellen Dictionaryfadens )
   ret
 
 1:laf x8, Fadenende            # Kann mit dem Fadenende beginnen.                                               In RAM:   Start with latest definition.
-  lw x8, 0(x8)
+  lc x8, 0(x8)
   ret
 
   # Zwei Möglichkeiten: Vorwärtslink ist $FFFFFFFF --> Ende gefunden
@@ -832,15 +958,15 @@ dictionarystart: # ( -- Startadresse des aktuellen Dictionaryfadens )
   Definition Flag_visible, "dictionarynext" # ( address -- address flag )
 dictionarynext: # Scans dictionary chain and returns true if end is reached.
 # -----------------------------------------------------------------------------
-  li x15, erasedword # Check if link field is empty which does not happen with properly smudged flash definitions
-  lw x14, 0(x8)
+  li x15, erasedcell # Check if link field is empty which does not happen with properly smudged flash definitions
+  lc x14, 0(x8)
   beq x15, x14, true
 
     li x15, erasedbyte
-    lbu x14, 8(x14) # Skip link and flags of the next definition to fetch its name length byte
+    lbu x14, 2*CELL(x14) # Skip link and flags of the next definition to fetch its name length byte
     beq x15, x14, true
 
-      lw x8, 0(x8)
+      lc x8, 0(x8)
         pushdaconst 0
         ret
 
@@ -850,14 +976,17 @@ dictionarynext: # Scans dictionary chain and returns true if end is reached.
 #------------------------------------------------------------------------------
   pushdaaddrf hook_find
   ret
-  .word core_find  # No Pause defined for default
+  .varinit core_find  # No Pause defined for default
 
 #------------------------------------------------------------------------------
   Definition Flag_visible, "find" # ( -- ? )
 find:
 #------------------------------------------------------------------------------
   laf x15, hook_find
-  lw x15, 0(x15)
+  lc x15, 0(x15)
+  .ifdef thejas32_pipeline_bug
+  fence
+  .endif
   .ifdef mipscore
   jr x15
   .else
@@ -887,19 +1016,19 @@ core_find: # ( address length -- Code-Adresse Flags )
 
 1:# Loop through the dictionary
 
-  lw x10, 4(x8) # Fetch Flags to see if this definition is visible.
+  lc x10, CELL(x8) # Fetch Flags to see if this definition is visible.
   li x15, Flag_invisible
   beq x15, x10, 2f # Skip this definition if invisible
 
   .ifdef erasedflashspecial
-  li x15, erasedword
+  li x15, erasedcell
   beq x15, x10, 2f # Skip this definition if invisible
   .endif
 
   # Definition is visible. Compare the name !
   dup
-  addi x8, x8, 8 # Skip Link and Flags
-  call count     # Prepare an address-length string
+  addi x8, x8, 2*CELL # Skip Link and Flags
+  call count          # Prepare an address-length string
 
   r_fetch_2
   call compare
@@ -909,7 +1038,7 @@ core_find: # ( address length -- Code-Adresse Flags )
     # Gefunden ! Found !
     # String überlesen und Pointer gerade machen   Skip name string
     dup
-    addi x8, x8, 8 # Skip Link and Flags
+    addi x8, x8, 2*CELL # Skip Link and Flags
     call skipstring
     popda x11      # Codestartadresse  Note Code start address
     mv x12, x10    # Flags             Note Flags

@@ -1,7 +1,7 @@
 
 RISCVGNU?=riscv64-unknown-elf
 
-CFLAGS?=--specs=/usr/lib/picolibc/riscv64-unknown-elf/picolibc.specs -T picolibc.ld -Os -fno-strict-aliasing -fno-pic -fomit-frame-pointer -march=rv32imc -mabi=ilp32 -fno-stack-protector -mno-relax -fdata-sections -ffunction-sections -fno-math-errno
+CFLAGS?=--specs=/usr/lib/picolibc/riscv64-unknown-elf/picolibc.specs -T picolib_gcc.ld -Os -fno-strict-aliasing -fno-pic -fomit-frame-pointer -march=rv32imc -mabi=ilp32 -fno-stack-protector -mno-relax -fdata-sections -ffunction-sections -fno-math-errno
 
 all :
 	rm -f *.o

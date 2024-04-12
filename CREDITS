@@ -18,6 +18,7 @@ Port for CH56X by Hans Baier:
   https://github.com/hansfbaier/mecrisp-quintus-ch56x-port
   https://github.com/hansfbaier/mecrisp-quintus-ch56x-boardsupport
 Port for CH32V203F8P6 by Ivan Dimitrov
+Port for Thejas32 by Amith
 
 Hardware donations:
 
@@ -26,6 +27,7 @@ Klaus Kohl-Schöpe
 Ulrich Hoffmann
 Jürgen Pintaske
 Paul Boddie
+Amith
 
 Testing and hints in alphabetical order:
 
@@ -44,4 +46,4 @@ Inspiring projects:
 
 Logic tricks from the book Hacker's Delight (http://www.hackersdelight.org/)
 PIC32 VGA assembler code by Paul Boddie (https://blogs.fsfe.org/pboddie/?p=1712)
-Femtosoc and FemtoRV32 by Bruno Levy https://github.com/BrunoLevy/learn-fpga/
+FemtoRV32 by Bruno Levy and Matthias Koch https://github.com/BrunoLevy/learn-fpga/

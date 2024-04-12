@@ -27,7 +27,7 @@
 #------------------------------------------------------------------------------
   pushdaconst hook_initflash
   ret
-  .word nop_vektor
+  .varinit nop_vektor
 
 #------------------------------------------------------------------------------
   Definition Flag_visible|Flag_variable, "hook-flash!" # ( -- addr )
@@ -35,7 +35,7 @@
 #------------------------------------------------------------------------------
   pushdaconst hook_flashstore
   ret
-  .word store
+  .varinit store
 
 #------------------------------------------------------------------------------
   Definition Flag_visible|Flag_variable, "hook-flushflash" # ( -- addr )
@@ -43,7 +43,7 @@
 #------------------------------------------------------------------------------
   pushdaconst hook_flushflash
   ret
-  .word nop_vektor
+  .varinit nop_vektor
 
 
 #------------------------------------------------------------------------------
@@ -51,7 +51,10 @@
 initflash:
 #------------------------------------------------------------------------------
   li x15, hook_initflash
-  lw x15, 0(x15)
+  lc x15, 0(x15)
+  .ifdef thejas32_pipeline_bug
+  fence
+  .endif
   jalr zero, x15, 0
 
 # -----------------------------------------------------------------------------
@@ -72,7 +75,10 @@ flashstore: # ( x addr -- )
 
   # Fine !
   li x15, hook_flashstore
-  lw x15, 0(x15)
+  lc x15, 0(x15)
+  .ifdef thejas32_pipeline_bug
+  fence
+  .endif
   jalr zero, x15, 0
 
 2:writeln "Cannot write into core !"
@@ -83,5 +89,8 @@ flashstore: # ( x addr -- )
 flushflash:
 #------------------------------------------------------------------------------
   li x15, hook_flushflash
-  lw x15, 0(x15)
+  lc x15, 0(x15)
+  .ifdef thejas32_pipeline_bug
+  fence
+  .endif
   jalr zero, x15, 0

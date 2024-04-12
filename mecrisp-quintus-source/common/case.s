@@ -67,7 +67,7 @@
 
     .ifdef mipscore # NOP for branch delay slot
     pushdaconst 0
-    call komma
+    call wkomma
    .endif
 
     pushdaconst 2           # Strukturerkennung  Structure matching
@@ -134,4 +134,3 @@ strukturendcase:
 
 2:pop_x1_x10
   ret
-

@@ -44,6 +44,7 @@ insert_jalrx8: # ( Ziel Opcodelücke -- )
 
 .else
 
+.ifndef RV64
 # -----------------------------------------------------------------------------
 insert_jalrx8: # ( Ziel Opcodelücke -- )
 # -----------------------------------------------------------------------------
@@ -67,7 +68,7 @@ insert_jalrx8: # ( Ziel Opcodelücke -- )
   pushda x10
   call kommairgendwo
 
-  sll x8, x8, 20
+  slli x8, x8, 20
   li x15, 0x00000067 | reg_tos << 7 | reg_tmp1 << 15 # jalr x8, x15, 0
   or x8, x8, x15
 
@@ -76,6 +77,7 @@ insert_jalrx8: # ( Ziel Opcodelücke -- )
   pop_x1_x10
   j kommairgendwo
 
+.endif
 .endif
 
 # -----------------------------------------------------------------------------
@@ -93,8 +95,17 @@ does: # Gives freshly defined word a special action.
     la x15, dodoes
     jalr x8, x15
   .else
-    lui x15, %hi(dodoes)
-    jalr x8, x15, %lo(dodoes)
+    .ifdef RV64
+      ld x15, dodoes_addr
+      j does_jalr
+             .p2align 3
+dodoes_addr: .dword dodoes
+does_jalr:
+      jalr x8, x15, 0
+    .else
+      lui x15, %hi(dodoes)
+      jalr x8, x15, %lo(dodoes)
+    .endif
   .endif
 
   ret # Very important as delimiter as does> itself is inline.
@@ -108,14 +119,21 @@ dodoes:
   push x1
 
   pushdaaddrf Einsprungpunkt
-  lw x8, 0(x8)
+  lc x8, 0(x8)
 
   .ifdef compressed_isa
     addi x8, x8, 8    # Skip pop x1 and pushdatos opcodes
     andi x15, x8, 2   # Align on 4
     add x8, x8, x15
   .else
-    addi x8, x8, 16 # Skip pop x1 and pushdatos opcodes
+    addi x8, x8, 16   # Skip pop x1 and pushdatos opcodes
+  .endif
+
+  .ifdef RV64
+    andi x15, x8, 4   # Align on 8
+    add x8, x8, x15
+
+    addi x8, x8, 8    # Skip auipc & j opcodes
   .endif
 
   .ifdef flash8bytesblockwrite
@@ -132,11 +150,24 @@ dodoes:
   .endif
 
   # ( Ziel Opcodelücke )
-  call insert_jalrx8
+
+  .ifdef RV64
+    over
+    addiw x8, x8, 0
+    over
+    call kommairgendwo
+    swap
+    srli x8, x8, 32
+    swap
+    addi x8, x8, 4
+    call kommairgendwo
+  .else
+    call insert_jalrx8
+  .endif
 
   call smudge
 
-  addi sp, sp, 4 # Skip one return layer
+  addi sp, sp, CELL # Skip one return layer
   pop x1
   ret
 
@@ -170,20 +201,46 @@ builds: # Brother of does> that creates a new definition and leaves space to ins
       .else
         pushdaconst 0x00000013 # nop
       .endif
-      call komma
+      call wkomma
 
 1:
   .endif
 
-  pushdaconst 8 # A call instruction or its preparation will go here - but I don't know its target address for now.
+  .ifdef RV64
+    call align8komma
+
+    # Die Konstante darf nicht das Letzte in der Definition sein,
+    # weil in den 64 Bits oben auch 4 leere Bytes sein können und in dem
+    # Falle sonst später in smudge ein NOP als "Flashenderkennungsschutz"
+    # angefügt werden würde, was das Konstrukt zerstört.
+
+    # Deshalb springe ich hier über die Konstante drüber.
+
+    pushdaconst 0x00000017 | reg_tmp1 << 7 # auipc x15, 0
+    call wkomma
+
+    pushdaconst 0x00c0006f # j über die inline folgende 8-Byte-Konstante
+    call wkomma
+  .endif
+
+  # Die Lücke passt sowohl für das 32-Bit lui/jalr-Paar als auch für die 64-Bit Konstante.
+  pushdaconst 2*4 # A call instruction or its preparation will go here - but I don't know its target address for now.
   call allot # Make a hole to insert the destination later.
+
+  .ifdef RV64
+    pushdaconst 0x00803003 | reg_tmp1 << 7 | reg_tmp1 << 15 # ld x15, 8(x15)
+    call wkomma
+
+    pushdaconst 0x00000067 | reg_tos  << 7 | reg_tmp1 << 15 # jalr x8, x15, 0
+    call wkomma
+  .endif
 
   .ifdef mipscore
     pushdaconst 0x00000009 | reg_tos << 11 | reg_tmp1 << 21 # jalr x8, x15
-    call komma
+    call wkomma
 
     pushdaconst 0x00000025 # nop = or zero, zero, zero  Wichtig, damit keine Flash-Ende-Füllung angefügt wird.
-    call komma
+    call wkomma
   .endif
 
   pop x1
@@ -195,13 +252,25 @@ builds: # Brother of does> that creates a new definition and leaves space to ins
   push x1
   call builds
   # Copy of the inline-code of does>
+
   pushdatos
+  # Den Aufruf mit absoluter Adresse einkompilieren. Perform this call with absolute addressing.
   .ifdef mipscore
     la x15, dodoes
     jalr x8, x15
   .else
-    lui x15, %hi(dodoes)
-    jalr x8, x15, %lo(dodoes)
+    .ifdef RV64
+      ld x15, dodoes_addr_create
+      j does_jalr_create
+                    .p2align 3
+dodoes_addr_create: .dword dodoes
+does_jalr_create:
+      jalr x8, x15, 0
+    .else
+      lui x15, %hi(dodoes)
+      jalr x8, x15, %lo(dodoes)
+    .endif
   .endif
+
   pop x1
   ret

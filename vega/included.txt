@@ -1033,9 +1033,9 @@ numbertable exp-coef
   swap addrinflash? or           \ or in flash ?
 ;
 
-: link>flags ( addr -- addr* ) 4 + ;
-: link>name  ( addr -- addr* ) 8 + ;
-: link>code  ( addr -- addr* ) 8 + skipstring ;
+: link>flags ( addr -- addr* ) 1 cells + ;
+: link>name  ( addr -- addr* ) 2 cells + ;
+: link>code  ( addr -- addr* ) 2 cells + skipstring ;
 
 0 variable searching-for
 0 variable closest-found

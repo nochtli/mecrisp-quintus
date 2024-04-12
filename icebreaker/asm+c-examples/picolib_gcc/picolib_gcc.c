@@ -113,7 +113,7 @@ static int sample_putc(char c, FILE *file)
 }
 
 static int sample_getc(FILE *file)
-  {
+{
   unsigned char c;
   // (void) file;         /* Not used in this function */
   c = serial_getchar();  /* Defined by underlying system */
@@ -121,15 +121,17 @@ static int sample_getc(FILE *file)
 }
 
 static int sample_flush(FILE *file)
-        {
+{
   /* This function doesn't need to do anything */
   // (void) file;         /* Not used in this function */
   return 0;
-    }
+}
 
 static FILE __stdio = FDEV_SETUP_STREAM(sample_putc, sample_getc, sample_flush, _FDEV_SETUP_RW);
 
-FILE *const __iob[3] = { &__stdio, &__stdio, &__stdio };
+FILE *const stdin  = &__stdio;
+FILE *const stdout = &__stdio;
+FILE *const stderr = &__stdio;
 
 // -----------------------------------------------------------------------------
 //   Main

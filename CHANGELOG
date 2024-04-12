@@ -355,3 +355,16 @@
 
   - Contribution by Ivan Dimitrov:
       New target: CH32V203F8P6
+
+05.03.2024, Matthias Koch, Mecrisp-Quintus 1.1.0
+
+  Mecrisp-Quintus goes 64 bits!
+
+  - New targets: RV64IM and RV64IMC Linux
+  - Added support for 'm' style char numbers
+  - Updated gcc-picolib example for Icebreaker
+  - Added test suite
+  - Fixed flaws in alignment, mulhsu and spaces
+
+  - Contribution by Amith:
+      New target: Thejas32

@@ -77,17 +77,17 @@
    # Set dictionary pointer into RAM first
    laf x14, Dictionarypointer
    laf x15, RamDictionaryAnfang
-   sw x15, 0(x14)
+   sc x15, 0(x14)
 
    # Fadenende fürs RAM vorbereiten
    # Set latest for RAM
    laf x14, Fadenende
    la x15, CoreDictionaryAnfang
-   sw x15, 0(x14)
+   sc x15, 0(x14)
 
  #  write "Setze Fadenende:"
  #  pushdaconst Fadenende
- #  lw x8, 0(x8)
+ #  lc x8, 0(x8)
  #  # laf x8, CoreDictionaryAnfang
  #  call hexdot
  #  writeln ""
@@ -109,7 +109,7 @@ SucheFlashPointer_Hangelschleife:
 #  pushda x8
 #  call hexdot
 #  writeln "Hangelschleife"
-  lw x11, 4(x8)  # Aktuelle Flags lesen  Fetch current Flags
+  lc x11, CELL(x8)  # Aktuelle Flags lesen  Fetch current Flags
 
   li x13, Flag_invisible # Flag_invisible ? Überspringen !  Skip invisible definitions
   beq x11, x13, Sucheflashpointer_Speicherbelegung_fertig
@@ -128,7 +128,7 @@ SucheFlashPointer_Hangelschleife:
       # Search for end of code of current definition.
       push x8
 
-      addi x8, x8, 8
+      addi x8, x8, 2*CELL
       call skipstring  # x8 zeigt nun an den Codebeginn des aktuellen Wortes.  x8 points to start of code of current definition
       call suchedefinitionsende # Advance pointer to end of code. This is detected by "bx lr" or "pop {pc}" opcodes.
 
@@ -136,11 +136,32 @@ SucheFlashPointer_Hangelschleife:
 
       .ifdef compressed_isa
       lhu x13, 0(x8) # Fetch required length of buffer, do this in two steps because of alignment issues
+
       lhu x10, 2(x8)
       slli x10, x10, 16
       or x13, x13, x10
+
+      .ifdef RV64
+        lhu x10, 4(x8)
+        slli x10, x10, 32
+        or x13, x13, x10
+        lhu x10, 6(x8)
+        slli x10, x10, 48
+        or x13, x13, x10
+      .endif
+
       .else
-      lw x13, 0(x8) # Fetch required length of buffer
+
+      .ifdef RV64
+        lwu x13, 0(x8)
+
+        lwu x10, 4(x8)
+        slli x10, x10, 32
+        or x13, x13, x10
+      .else
+        lc x13, 0(x8) # Fetch required length of buffer
+      .endif
+
       .endif
 
  #     pushda x13
@@ -164,7 +185,7 @@ checksums: # Registerprüfsummen für x1 bis x15  Self-test register checksums f
       # Die Flags werden später nicht mehr gebraucht.
       # This one allocates RAM, Flags are not needed anymore.
 
-      andi x11, x11, 0x0F # Das unterste Nibble maskieren  Mask lower 4 bits that contains amount of 32 bit locations requested.
+      andi x11, x11, 0x0F # Das unterste Nibble maskieren  Mask lower 4 bits that contains amount of 64 bit locations requested.
 
  #     pushda x11
  #     call hexdot
@@ -172,7 +193,7 @@ checksums: # Registerprüfsummen für x1 bis x15  Self-test register checksums f
 
         # Bei Null Bytes brauche ich nichts zu kopieren, den Fall erkennt move.
         # Zero byte requests are handled by move itself, no need to catch this special case. Sounds strange, but is useful to have two handles for one variable.
-        slli x11, x11, 2  # Mit vier malnehmen                  Multiply by 4
+        slli x11, x11, CELLSHIFT # Multiply by size of cell in bytes
         sub x7, x7, x11 # Ramvariablenpointer wandern lassen  Subtract from the pointer that points to the next free location
 
         # Den neu geschaffenen Platz initialisieren !
@@ -181,7 +202,7 @@ checksums: # Registerprüfsummen für x1 bis x15  Self-test register checksums f
         # Muss zuerst schaffen, das Ende der aktuellen Definition zu finden.
         # Search for end of code of current definition.
         pushdatos
-        addi x8, x8, 8
+        addi x8, x8, 2*CELL
         call skipstring  # x8 zeigt nun an den Codebeginn des aktuellen Wortes.  x8 points to start of code of current definition
         call suchedefinitionsende # Advance pointer to end of code. This is detected by "bx lr" or "pop {pc}" opcodes.
 
@@ -203,11 +224,11 @@ Sucheflashpointer_Speicherbelegung_fertig:
   beq x10, zero, SucheFlashPointer_Hangelschleife
 
   laf x10, ZweitFadenende
-  sw x8, 0(x10) # Das Fadenende für den Flash setzen.  Set pointer to latest definition.
+  sc x8, 0(x10) # Das Fadenende für den Flash setzen.  Set pointer to latest definition.
   drop
 
   laf x10, VariablenPointer # Set pointer to current end-of-ram-dictionary for later permanent RAM allocations by variables defined in Flash.
-  sw x7, 0(x10)
+  sc x7, 0(x10)
 
 
   # writeln "Hangelschleife durchgelaufen"
@@ -225,18 +246,18 @@ Sucheflashpointer_Speicherbelegung_fertig:
 1:beq x10, x11, 2f #  Wenn ich am Anfang angelangt bin, ist das der DictionaryPointer.
                    #  Finished if beginning of Flash is hit.
 
-  addi x10, x10, -4
+  addi x10, x10, -CELL
 
-  lw x13, 0(x10)
+  lc x13, 0(x10)
 
   beq x13, x12, 1b # Wenn es nicht gleich ist, habe ich eine Füllung gefunden.
                    # If there is not $FFFF on that location I have found "end of free space".
 
-  addi x10, x10, 4
+  addi x10, x10, CELL
 
 2:# Dictionarypointer gefunden. Found DictionaryPointer.
   laf x11, ZweitDictionaryPointer # We start to compile into RAM - the pointer found goes to the second set of pointers that are swapped with compiletoflash/compiletoram.
-  sw x10, 0(x11)
+  sc x10, 0(x11)
 
 #  writeln "Dictionarypointer gefunden"
 

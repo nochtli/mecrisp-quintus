@@ -94,7 +94,7 @@ space:
 # -----------------------------------------------------------------------------
   push x1
 
-1:beq x8, zero, 2f
+1:bge zero, x8, 2f
   call space
   addi x8, x8, -1
   j 1b
@@ -260,10 +260,10 @@ dotnfuesschen:
   andi x15, x15, 0x0F
   add x15, x15, x10
 
-  addi x9, x9, -8
-  sw x8, 4(x9)
-  sw x14, 0(x9)
-  lbu x8, 0(x15)
+  addi x9, x9, -2*CELL
+  sc x8,  CELL(x9)
+  sc x14,    0(x9)
+  lbu x8,    0(x15)
 
   call emit
   call emit

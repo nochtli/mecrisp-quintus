@@ -109,7 +109,7 @@ move:  # ( Quelladdr Zieladdr Byteanzahl -- ) ( Source Destination Count -- )
   Definition Flag_inline|Flag_noframe|Flag_opcodierbar, "@" # ( 32-addr -- x )
                               # Loads the cell at 'addr'.
 # -----------------------------------------------------------------------------
-  lw x8, 0(x8)
+  lc x8, 0(x8)
   ret
 
   # ---------------------------------------------
@@ -118,7 +118,11 @@ move:  # ( Quelladdr Zieladdr Byteanzahl -- ) ( Source Destination Count -- )
   .ifdef mipscore
   li x15, 0x8C000000 | reg_tos << 21 | reg_tos << 16
   .else
+  .ifdef RV64
+  li x15, 0x00003003 | reg_tos << 7  | reg_tos << 15  # ld x8, 0(x8)
+  .else
   li x15, 0x00002003 | reg_tos << 7  | reg_tos << 15  # lw x8, 0(x8)
+  .endif
   .endif
 
 # -----------------------------------------------------------------------------
@@ -146,7 +150,7 @@ opcodiere_fetch_adresskonstante:
   .ifdef mipscore
   li x15, 0xFFFF8000
   .else
-  li x15, 0xFFFFF800
+  li x15, -2048 # 0xFFFFF800
   .endif
   and x14, x8, x15
   beq x14, x15, 1f
@@ -162,6 +166,25 @@ opcodiere_fetch_adresskonstante:
   j 4f
 
 2:# Lange Variante mit zwei Opcodes.
+
+  .ifdef RV64
+
+  # Probe ob die Konstante über die Zwei-Opcode-Grenzen hinausragt:
+
+  li x15, 0xFFFFFFFF80000000
+  and x14, x8, x15
+  beq x14, x15, 1f
+  beq x14, zero, 1f
+
+    pushdaconst reg_tos
+    call registerliteralkomma
+
+    pushda x10
+    pop_x1_x10
+    j wkomma
+1:
+
+  .endif
 
   # Korrektur fürs negative Vorzeichen bei der Addition
   .ifdef mipscore
@@ -185,11 +208,11 @@ opcodiere_fetch_adresskonstante:
   li x15, 0x3C000000 | reg_tos << 16
   or x8, x8, x15
   .else
-  li x15, 0xFFFFF000
+  li x15, -4096 # 0xFFFFF000
   and x8, x8, x15
   ori  x8, x8, 0x000000037 | reg_tos << 7  # lui x8, ...
   .endif
-  call komma
+  call wkomma
 
 
 4:# Nur ein Opcode, oder der zweite Teil bei zwei Opcodes
@@ -205,11 +228,11 @@ opcodiere_fetch_adresskonstante:
 
   or x8, x10, x15
   pop_x1_x10
-  j komma
+  j wkomma
 
 #    .ifdef mipscore # NOP for load delay slot ***
 #    pushdaconst 0
-#    call komma
+#    call wkomma
 #   .endif
 
 # -----------------------------------------------------------------------------
@@ -217,10 +240,10 @@ opcodiere_fetch_adresskonstante:
 # Given a value 'x' and a cell-aligned address 'addr', stores 'x' to memory at 'addr', consuming both.
 # -----------------------------------------------------------------------------
 store:
-  lw x15, 0(x9)
-  sw x15, 0(x8)
-  lw x8, 4(x9)
-  addi x9, x9, 8
+  lc x15, 0(x9)
+  sc x15, 0(x8)
+  lc x8, 1*CELL(x9)
+  addi x9, x9, 2*CELL
   ret
 
   # ---------------------------------------------
@@ -230,8 +253,13 @@ store:
   li x14, 0xAC000000 | reg_tos  << 16 | reg_tmp2 << 21 # Eine Konstante
   li x15, 0xAC000000 | reg_tmp1 << 16 | reg_tmp2 << 21 # Zwei Konstanten
   .else
+  .ifdef RV64
+  li x14, 0x00003023 | reg_tos  << 20 | reg_tmp2 << 15 # sd x8,  0(x14)
+  li x15, 0x00003023 | reg_tmp1 << 20 | reg_tmp2 << 15 # sd x15, 0(x14)
+  .else
   li x14, 0x00002023 | reg_tos  << 20 | reg_tmp2 << 15 # sw x8,  0(x14)
   li x15, 0x00002023 | reg_tmp1 << 20 | reg_tmp2 << 15 # sw x15, 0(x14)
+  .endif
   .endif
 
   # Fallthrough:
@@ -276,7 +304,7 @@ opcodiere_store_adresskonstante_intern:
   .ifdef mipscore
   li x15, 0xFFFF8000
   .else
-  li x15, 0xFFFFF800
+  li x15, -2048 # 0xFFFFF800
   .endif
   and x14, x8, x15
   beq x14, x15, 1f
@@ -292,6 +320,26 @@ opcodiere_store_adresskonstante_intern:
   j 4f
 
 2:# Lange Variante mit zwei Opcodes.
+
+  .ifdef RV64
+
+  # Probe ob die Konstante über die Zwei-Opcode-Grenzen hinausragt:
+
+  li x15, 0xFFFFFFFF80000000
+  and x14, x8, x15
+  beq x14, x15, 1f
+  beq x14, zero, 1f
+
+    pushdaconst reg_tmp2
+    call registerliteralkomma
+
+    pushda x10
+    pop x1
+    j wkomma
+1:
+
+  .endif
+
 
   # Korrektur fürs negative Vorzeichen bei der Addition
   .ifdef mipscore
@@ -315,11 +363,11 @@ opcodiere_store_adresskonstante_intern:
   li x15, 0x3C000000 | reg_tmp2 << 16
   or x8, x8, x15
   .else
-  li x15, 0xFFFFF000
+  li x15, -4096 # 0xFFFFF000
   and x8, x8, x15
   ori  x8, x8, 0x000000037 | reg_tmp2 << 7  # lui x14, ...
   .endif
-  call komma
+  call wkomma
 
 
 4:# Nur ein Opcode, oder der zweite Teil bei zwei Opcodes
@@ -342,19 +390,84 @@ opcodiere_store_adresskonstante_intern:
   or x8, x10, x15
 
   pop x1
-  j komma
+  j wkomma
 
 # -----------------------------------------------------------------------------
   Definition Flag_visible, "+!" # ( x 32-addr -- )
                                # Adds 'x' to the memory cell at 'addr'.
 # -----------------------------------------------------------------------------
-  lw x15, 0(x9)
-    lw x14, 0(x8)
+  lc x15, 0(x9)
+    lc x14, 0(x8)
+    add x15, x15, x14
+    sc x15, 0(x8)
+  lc x8, 1*CELL(x9)
+  addi x9, x9, 2*CELL
+  ret
+
+.ifdef RV64
+
+# -----------------------------------------------------------------------------
+  Definition Flag_inline|Flag_noframe|Flag_opcodierbar, "w@" # ( 32-addr -- x )
+                              # Loads the word at 'addr'.
+# -----------------------------------------------------------------------------
+  lwu x8, 0(x8)
+  ret
+
+  # ---------------------------------------------
+  #  Opcodier-Einsprung:
+
+  li x15, 0x00006003 | reg_tos << 7  | reg_tos << 15  # lwu x8, 0(x8)
+
+  j opcodiere_fetch_adresskonstante
+
+# -----------------------------------------------------------------------------
+  Definition Flag_inline|Flag_noframe|Flag_opcodierbar, "w@signed" # ( 32-addr -- x )
+                              # Loads the word at 'addr'.
+# -----------------------------------------------------------------------------
+  lw x8, 0(x8)
+  ret
+
+  # ---------------------------------------------
+  #  Opcodier-Einsprung:
+
+  li x15, 0x00002003 | reg_tos << 7  | reg_tos << 15  # lw x8, 0(x8)
+
+  j opcodiere_fetch_adresskonstante
+
+# -----------------------------------------------------------------------------
+  Definition Flag_inline|Flag_noframe|Flag_opcodierbar, "w!" # ( x 32-addr -- )
+# Given a value 'x' and an 32-bit-aligned address 'addr', stores 'x' to memory at 'addr', consuming both.
+# -----------------------------------------------------------------------------
+wstore:
+  lc x15, 0(x9)
+  sw x15, 0(x8)
+  lc x8, 1*CELL(x9)
+  addi x9, x9, 2*CELL
+  ret
+
+  # ---------------------------------------------
+  #  Opcodier-Einsprung:
+
+  li x14, 0x00002023 | reg_tos  << 20 | reg_tmp2 << 15 # sw x8,  0(x14)
+  li x15, 0x00002023 | reg_tmp1 << 20 | reg_tmp2 << 15 # sw x15, 0(x14)
+
+  j opcodiere_store_adresskonstante
+
+
+# -----------------------------------------------------------------------------
+  Definition Flag_visible, "w+!" # ( x 32-addr -- )
+                                # Adds 'x' to the memory cell at 'addr'.
+# -----------------------------------------------------------------------------
+  lc x15, 0(x9)
+    lwu x14, 0(x8)
     add x15, x15, x14
     sw x15, 0(x8)
-  lw x8, 4(x9)
-  addi x9, x9, 8
+  lc x8, 1*CELL(x9)
+  addi x9, x9, 2*CELL
   ret
+
+.endif
+
 
 # -----------------------------------------------------------------------------
   Definition Flag_inline|Flag_noframe|Flag_opcodierbar, "h@" # ( 16-addr -- x )
@@ -395,10 +508,10 @@ opcodiere_store_adresskonstante_intern:
 # Given a value 'x' and an 16-bit-aligned address 'addr', stores 'x' to memory at 'addr', consuming both.
 # -----------------------------------------------------------------------------
 hstore:
-  lw x15, 0(x9)
+  lc x15, 0(x9)
   sh x15, 0(x8)
-  lw x8, 4(x9)
-  addi x9, x9, 8
+  lc x8, 1*CELL(x9)
+  addi x9, x9, 2*CELL
   ret
 
   # ---------------------------------------------
@@ -419,12 +532,12 @@ hstore:
   Definition Flag_visible, "h+!" # ( x 16-addr -- )
                                 # Adds 'x' to the memory cell at 'addr'.
 # -----------------------------------------------------------------------------
-  lw x15, 0(x9)
+  lc x15, 0(x9)
     lhu x14, 0(x8)
     add x15, x15, x14
     sh x15, 0(x8)
-  lw x8, 4(x9)
-  addi x9, x9, 8
+  lc x8, 1*CELL(x9)
+  addi x9, x9, 2*CELL
   ret
 
 # -----------------------------------------------------------------------------
@@ -465,10 +578,10 @@ hstore:
   Definition Flag_inline|Flag_noframe|Flag_opcodierbar, "c!" # ( x 8-addr -- )
 # Given a value 'x' and an 8-bit-aligned address 'addr', stores 'x' to memory at 'addr', consuming both.
 # -----------------------------------------------------------------------------
-  lw x15, 0(x9)
+  lc x15, 0(x9)
   sb x15, 0(x8)
-  lw x8, 4(x9)
-  addi x9, x9, 8
+  lc x8, CELL(x9)
+  addi x9, x9, 2*CELL
   ret
 
   # ---------------------------------------------
@@ -489,12 +602,12 @@ hstore:
   Definition Flag_visible, "c+!" # ( x 8-addr -- )
                                # Adds 'x' to the memory cell at 'addr'.
 # -----------------------------------------------------------------------------
-  lw x15, 0(x9)
+  lc x15, 0(x9)
     lbu x14, 0(x8)
     add x15, x15, x14
     sb x15, 0(x8)
-  lw x8, 4(x9)
-  addi x9, x9, 8
+  lc x8, 1*CELL(x9)
+  addi x9, x9, 2*CELL
   ret
 
 
@@ -503,86 +616,138 @@ hstore:
   Definition Flag_visible, "bis!" # ( x 32-addr -- )  Set bits
   # Setzt die Bits in der Speicherstelle
 # -----------------------------------------------------------------------------
-  lw x15, 0(x9)
-    lw x14, 0(x8)
+  lc x15, 0(x9)
+    lc x14, 0(x8)
     or x15, x15, x14
-    sw x15, 0(x8)
-  lw x8, 4(x9)
-  addi x9, x9, 8
+    sc x15, 0(x8)
+  lc x8, 1*CELL(x9)
+  addi x9, x9, 2*CELL
   ret
-
 
 # -----------------------------------------------------------------------------
   Definition Flag_visible, "bic!" # ( x 32-addr -- )  Clear bits
   # Löscht die Bits in der Speicherstelle
 # -----------------------------------------------------------------------------
-  lw x15, 0(x9)
+  lc x15, 0(x9)
   inv x15
-    lw x14, 0(x8)
+    lc x14, 0(x8)
     and x15, x15, x14
-    sw x15, 0(x8)
-  lw x8, 4(x9)
-  addi x9, x9, 8
+    sc x15, 0(x8)
+  lc x8, 1*CELL(x9)
+  addi x9, x9, 2*CELL
   ret
 
 # -----------------------------------------------------------------------------
   Definition Flag_visible, "xor!" # ( x 32-addr -- )  Toggle bits
   # Wechselt die Bits in der Speicherstelle
 # -----------------------------------------------------------------------------
-  lw x15, 0(x9)
-    lw x14, 0(x8)
+  lc x15, 0(x9)
+    lc x14, 0(x8)
     xor x15, x15, x14
-    sw x15, 0(x8)
-  lw x8, 4(x9)
-  addi x9, x9, 8
+    sc x15, 0(x8)
+  lc x8, 1*CELL(x9)
+  addi x9, x9, 2*CELL
   ret
 
 # -----------------------------------------------------------------------------
   Definition Flag_visible, "bit@" # ( x 32-addr -- Flag )  Check bits
   # Prüft, ob Bits in der Speicherstelle gesetzt sind
 # -----------------------------------------------------------------------------
-  lw x15, 0(x8)
+  lc x15, 0(x8)
   drop
   and x8, x8, x15
   sltiu x8, x8, 1
   addi x8, x8, -1
   ret
 
+.ifdef RV64
+
+
+# -----------------------------------------------------------------------------
+  Definition Flag_visible, "wbis!" # ( x 32-addr -- )  Set bits
+  # Setzt die Bits in der Speicherstelle
+# -----------------------------------------------------------------------------
+  lc x15, 0(x9)
+    lwu x14, 0(x8)
+    or x15, x15, x14
+    sw x15, 0(x8)
+  lc x8, 1*CELL(x9)
+  addi x9, x9, 2*CELL
+  ret
+
+# -----------------------------------------------------------------------------
+  Definition Flag_visible, "wbic!" # ( x 32-addr -- )  Clear bits
+  # Löscht die Bits in der Speicherstelle
+# -----------------------------------------------------------------------------
+  lc x15, 0(x9)
+  inv x15
+    lwu x14, 0(x8)
+    and x15, x15, x14
+    sw x15, 0(x8)
+  lc x8, 1*CELL(x9)
+  addi x9, x9, 2*CELL
+  ret
+
+# -----------------------------------------------------------------------------
+  Definition Flag_visible, "wxor!" # ( x 32-addr -- )  Toggle bits
+  # Wechselt die Bits in der Speicherstelle
+# -----------------------------------------------------------------------------
+  lc x15, 0(x9)
+    lwu x14, 0(x8)
+    xor x15, x15, x14
+    sw x15, 0(x8)
+  lc x8, 1*CELL(x9)
+  addi x9, x9, 2*CELL
+  ret
+
+# -----------------------------------------------------------------------------
+  Definition Flag_visible, "wbit@" # ( x 32-addr -- Flag )  Check bits
+  # Prüft, ob Bits in der Speicherstelle gesetzt sind
+# -----------------------------------------------------------------------------
+  lwu x15, 0(x8)
+  drop
+  and x8, x8, x15
+  sltiu x8, x8, 1
+  addi x8, x8, -1
+  ret
+
+.endif
+
 # -----------------------------------------------------------------------------
   Definition Flag_visible, "hbis!" # ( x 16-addr -- )  Set bits
   # Setzt die Bits in der Speicherstelle
 # -----------------------------------------------------------------------------
-  lw x15, 0(x9)
+  lc x15, 0(x9)
     lhu x14, 0(x8)
     or x15, x15, x14
     sh x15, 0(x8)
-  lw x8, 4(x9)
-  addi x9, x9, 8
+  lc x8, 1*CELL(x9)
+  addi x9, x9, 2*CELL
   ret
 
 # -----------------------------------------------------------------------------
   Definition Flag_visible, "hbic!" # ( x 16-addr -- )  Clear bits
   # Setzt die Bits in der Speicherstelle
 # -----------------------------------------------------------------------------
-  lw x15, 0(x9)
+  lc x15, 0(x9)
   inv x15
     lhu x14, 0(x8)
     and x15, x15, x14
     sh x15, 0(x8)
-  lw x8, 4(x9)
-  addi x9, x9, 8
+  lc x8, 1*CELL(x9)
+  addi x9, x9, 2*CELL
   ret
 
 # -----------------------------------------------------------------------------
   Definition Flag_visible, "hxor!" # ( x 16-addr -- )  Toggle bits
   # Setzt die Bits in der Speicherstelle
 # -----------------------------------------------------------------------------
-  lw x15, 0(x9)
+  lc x15, 0(x9)
     lhu x14, 0(x8)
     xor x15, x15, x14
     sh x15, 0(x8)
-  lw x8, 4(x9)
-  addi x9, x9, 8
+  lc x8, 1*CELL(x9)
+  addi x9, x9, 2*CELL
   ret
 
 # -----------------------------------------------------------------------------
@@ -601,37 +766,37 @@ hstore:
   Definition Flag_visible, "cbis!" # ( x 8-addr -- )  Set bits
   # Setzt die Bits in der Speicherstelle
 # -----------------------------------------------------------------------------
-  lw x15, 0(x9)
+  lc x15, 0(x9)
     lbu x14, 0(x8)
     or x15, x15, x14
     sb x15, 0(x8)
-  lw x8, 4(x9)
-  addi x9, x9, 8
+  lc x8, 1*CELL(x9)
+  addi x9, x9, 2*CELL
   ret
 
 # -----------------------------------------------------------------------------
   Definition Flag_visible, "cbic!" # ( x 8-addr -- )  Clear bits
   # Setzt die Bits in der Speicherstelle
 # -----------------------------------------------------------------------------
-  lw x15, 0(x9)
+  lc x15, 0(x9)
   inv x15
     lbu x14, 0(x8)
     and x15, x15, x14
     sb x15, 0(x8)
-  lw x8, 4(x9)
-  addi x9, x9, 8
+  lc x8, 1*CELL(x9)
+  addi x9, x9, 2*CELL
   ret
 
 # -----------------------------------------------------------------------------
   Definition Flag_visible, "cxor!" # ( x 8-addr -- )  Toggle bits
   # Setzt die Bits in der Speicherstelle
 # -----------------------------------------------------------------------------
-  lw x15, 0(x9)
+  lc x15, 0(x9)
     lbu x14, 0(x8)
     xor x15, x15, x14
     sb x15, 0(x8)
-  lw x8, 4(x9)
-  addi x9, x9, 8
+  lc x8, 1*CELL(x9)
+  addi x9, x9, 2*CELL
   ret
 
 # -----------------------------------------------------------------------------

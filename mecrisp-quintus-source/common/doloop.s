@@ -24,7 +24,7 @@
 #------------------------------------------------------------------------------
   # Returnstack ( Limit Index Limit Index )
   pushdatos
-  lw x8, 8(sp)
+  lc x8, 2*CELL(sp)
   ret
 
 #------------------------------------------------------------------------------
@@ -32,7 +32,7 @@
 #------------------------------------------------------------------------------
   # Returnstack ( Limit Index )
   pushdatos
-  lw x8, 0(sp)
+  lc x8, 0(sp)
   ret
 
 #------------------------------------------------------------------------------
@@ -91,26 +91,26 @@
   # by moving all other elements further one place in datastack.
 
   laf x10, leavepointer
-  lw x11, 0(x10) # Die Stelle, wohin er zeigt = Inhalt der Variable Leavepointer
+  lc x11, 0(x10) # Die Stelle, wohin er zeigt = Inhalt der Variable Leavepointer
 
   mv x14, x9 # Alter Stackpointer  Old stackpointer
-  addi x9, x9, -4 # Ein Element mehr auf dem Stack  One more element on stack after this
+  addi x9, x9, -CELL # Ein Element mehr auf dem Stack  One more element on stack after this
 
 1:# Lückenschiebeschleife
-  lw x15, 0(x14)
-  sw x15, -4(x14)
-  addi x14, x14, 4
+  lc x15, 0(x14)
+  sc x15, -CELL(x14)
+  addi x14, x14, CELL
   bne x14, x11, 1b # x11 enthält die Stelle am Ende
 
 # Zweimal schieben, weil für struktur-then zwei Elemente eingefügt werden sollen.
 
   mv x14, x9 # Alter Stackpointer  Old stackpointer
-  addi x9, x9, -4 # Ein Element mehr auf dem Stack  One more element on stack after this
+  addi x9, x9, -CELL # Ein Element mehr auf dem Stack  One more element on stack after this
 
 1:# Lückenschiebeschleife
-  lw x15, 0(x14)
-  sw x15, -4(x14)
-  addi x14, x14, 4
+  lc x15, 0(x14)
+  sc x15, -CELL(x14)
+  addi x14, x14, CELL
   bne x14, x11, 1b # x11 enthält die Stelle am Ende
 
 
@@ -123,27 +123,27 @@
 
   .ifdef mipscore # NOP for branch delay slot
     pushdaconst 0
-    call komma
+    call wkomma
   .endif
 
   popda x14 # Die Lückenadresse
 
   # Insert the address of location for jump opcode in datastack
-  addi x11, x11, -4  # Weiter in Richtung Spitze des Stacks wandern
-  sw x14, 0(x11) # Lückenadresse einfügen
+  addi x11, x11, -CELL  # Weiter in Richtung Spitze des Stacks wandern
+  sc x14, 0(x11) # Lückenadresse einfügen
 
-  addi x11, x11, -4  # Weiter in Richtung Spitze des Stacks wandern
+  addi x11, x11, -CELL  # Weiter in Richtung Spitze des Stacks wandern
   li x15, 5 # Strukturerkennung für unbedingten Sprung
-  sw x15, 0(x11) # Lückenadresse einfügen
+  sc x15, 0(x11) # Lückenadresse einfügen
 
   # Den neuen Leavepointer vermerken  Update leavepointer
-  sw x11, 0(x10)
+  sc x11, 0(x10)
 
   # Increment counter for number of jumps to be generated later
 
-  lw x15, -4(x11)  # Sprungzähler aus dem Stack kopieren
-  addi x15, x15, 1  # Den Sprungzähler um eins erhöhen
-  sw x15, -4(x11)  # und zurückschreiben.
+  lc x15, -CELL(x11)  # Sprungzähler aus dem Stack kopieren
+  addi x15, x15, 1    # Den Sprungzähler um eins erhöhen
+  sc x15, -CELL(x11)  # und zurückschreiben.
 
   pop_x1_x10_x11
   ret
@@ -233,7 +233,7 @@ plusloop_opcodes:
   pushdaconst 0x00100013 | reg_loop_index <<  7 | reg_loop_index << 15 # addi x3, x3, 1 # Increment index.
   .endif
 
-  call komma
+  call wkomma
 
   .ifdef mipscore
     li x10, 0x14000000 | reg_loop_index << 21 | reg_loop_limit << 16
@@ -254,11 +254,11 @@ loop_intern:
     or x8, x8, x10
   .endif
 
-  call komma
+  call wkomma
 
   .ifdef mipscore # NOP for branch delay slot
     pushdaconst 0
-    call komma
+    call wkomma
   .endif
 
   popda x10
@@ -271,7 +271,7 @@ loop_intern:
   call inlinekomma
 
   laf x14, leavepointer  # Zurückholen für die nächste Schleifenebene
-  sw x8, 0(x14)         # Fetch back old leavepointer for next loop layer.
+  sc x8, 0(x14)         # Fetch back old leavepointer for next loop layer.
   drop
 
   pop_x1_x10
@@ -296,10 +296,10 @@ loop_intern:
   laf x14, leavepointer
 
   pushdatos
-  lw x8, 0(x14) # Alten Leavepointer sichern  Save old leavepointer
+  lc x8, 0(x14) # Alten Leavepointer sichern  Save old leavepointer
 
   pushdaconst 0
-  sw x9, 0(x14) # Aktuelle Position im Stack sichern  Save current position on datastack
+  sc x9, 0(x14) # Aktuelle Position im Stack sichern  Save current position on datastack
 
 do_intern_finish:
   call here               # Schleifen-Rücksprung vorbereiten  Prepare loop jump back to the beginning
@@ -336,18 +336,18 @@ do_opcodes:
   .else
   pushdaconst 0x40000033 | reg_tmp1 <<  7 | reg_loop_index << 15 | reg_loop_limit << 20 # sub x15, x3, x4
   .endif
-  call komma
+  call wkomma
 
   laf x14, leavepointer
   pushdatos
-  lw x8, 0(x14) # Alten Leavepointer sichern  Save old leavepointer
+  lc x8, 0(x14) # Alten Leavepointer sichern  Save old leavepointer
 
     call here
     call four_allot
 
     .ifdef mipscore # NOP for branch delay slot
     pushdaconst 0
-    call komma
+    call wkomma
    .endif
 
     pushdaconst 2           # Strukturerkennung  Structure matching
@@ -355,6 +355,6 @@ do_opcodes:
   pushdaconst 1
 
   laf x14, leavepointer
-  sw x9, 0(x14) # Aktuelle Position im Stack sichern  Save current position on datastack
+  sc x9, 0(x14) # Aktuelle Position im Stack sichern  Save current position on datastack
 
   j do_intern_finish

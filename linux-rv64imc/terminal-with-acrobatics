@@ -1,0 +1,4 @@
+#!/bin/bash
+stty -icanon -echo
+qemu-riscv64-static mecrisp-quintus-linux-rv64imc-with-acrobatics-and-disassembler
+stty sane

@@ -1,0 +1,75 @@
+
+--------------------------------------------------------------------------------
+
+Thejas32 is the first native Indian microcontroller chip.
+
+For more info, see:
+
+https://cdac-vega.gitlab.io/index.html
+https://vegaprocessors.in/devboards/
+
+This port was tested on an Aries V2.0 board.
+
+--------------------------------------------------------------------------------
+
+
+The LED that keeps blinking all the time is called the heartbeat indicator. I think it just tells you that the chip is functional. Here's what worked for me on Debian.
+
+1. Install minicom (sudo apt install minicom)
+
+2. Create a config file under /etc/minicom/
+
+3.          gvim /etc/minicom/minirc.vegaxmodem
+
+4. Put the text below into that config file
+
+5.
+
+pu port             /dev/ttyUSB0
+pu baudrate         115200
+pu bits             8
+pu parity           N
+pu stopbits         1
+pu updir            /home/amith/binaries
+pu rtscts           No
+
+6. run minicom using this config
+
+7. sudo minicom vegaxmodem
+
+8. Command to send the binary
+
+9. ctrl+a, s opens the send menu. Pic the bin file and press enter.
+
+10. After sending the file, press enter once again to start execution on the target.
+
+This is how it looks in terminal:
+
+ +-----------------------------------------------------------------------------+
+ |           VEGA Series of Microprocessors Developed By C-DAC, INDIA          |
+ |     Microprocessor Development Programme, Funded by MeitY, Govt. of India   |
+ +-----------------------------------------------------------------------------+
+ | Bootloader, ver 1.0.0 [  (hdg@cdac_tvm) Tue Dec  15 16:50:32 IST 2020 #135] |
+ |                                                                             |
+ |  ___    _________________________          ISA  : RISC-V [RV32IM]           |
+ |  __ |  / /__  ____/_  ____/__    |                                          |
+ |  __ | / /__  __/  _  / __ __  /| |         CPU  : VEGA ET1031               |
+ |  __ |/ / _  /___  / /_/ / _  ___ |                                          |
+ |  _____/  /_____/  \____/  /_/  |_|         SoC  : THEJAS32                  |
+ +---------------------------------------+-------------------------------------+
+ |         www.vegaprocessors.in         |             vega@cdac.in            |
+ +---------------------------------------+-------------------------------------+
+
+ Transfer mode  : UART XMODEM
+
+ IRAM           : [0x200000 - 0x23E7FF] [250 KB]
+
+ Please send file using XMODEM and then press ENTER key.
+ CCCCCCC
+ Starting program ...
+
+
+
+
+Mecrisp-Quintus 1.1.0 for RISC-V RV32IM on Thejas32 by Matthias Koch
+

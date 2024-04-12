@@ -27,8 +27,8 @@
   push x10
 
   # Factors in x8 and x10
-  lw x10, 0(x9)
-  addi x9, x9, 4
+  lc x10, 0(x9)
+  addi x9, x9, CELL
 
   # Result in x14
   li x14, 0
@@ -56,19 +56,19 @@ um_star:
   #  x8 # 2. Factor
   # x15 # Counter
 
-  lw x12, 0(x9)
+  lc x12, 0(x9)
 
   # Multiply x12 * x8, Result in x10:x11
   li x10, 0  # Clear result-high
   li x11, 0  # Clear result-low
-  li x15, 32 # Set loop counter
+  li x15, CELLBITS # Set loop counter
 
-1:srli x14, x11, 31 # Last Result * 2
+1:srli x14, x11, SIGNSHIFT # Last Result * 2
   add x11, x11, x11
   add x10, x10, x10
   or x10, x10, x14
 
-  srai x14, x8, 31
+  srai x14, x8, SIGNSHIFT
   slli x8, x8, 1
   beq x14, zero, 2f
 
@@ -80,7 +80,7 @@ um_star:
 2:addi x15, x15, -1
   bne x15, zero, 1b
 
-  sw x11, 0(x9) # Result low
+  sc x11, 0(x9) # Result low
   mv x8, x10    #        high
 
   pop_x10_x12
@@ -94,14 +94,14 @@ m_star:
 
   mv x10, x8
 
-    srai x15, x8, 31 # Turn MSB into 0xffffffff or 0x00000000
+    srai x15, x8, SIGNSHIFT
     add x8, x8, x15
     xor x8, x8, x15
 
   swap
   xor x10, x10, x8
 
-    srai x15, x8, 31 # Turn MSB into 0xffffffff or 0x00000000
+    srai x15, x8, SIGNSHIFT
     add x8, x8, x15
     xor x8, x8, x15
 
@@ -175,11 +175,11 @@ divmod:
 # -----------------------------------------------------------------------------
   push x1
   #  x8         # Divisor
-  lw x15, 0(x9) # Dividend
+  lc x15, 0(x9) # Dividend
 
   bge x15, zero, divmod_plus # Prüfe den Dividenden
   sub x15, zero, x15
-  sw x15, 0(x9)
+  sc x15, 0(x9)
 
 divmod_minus:
     bge x8, zero, divmod_minus_plus
@@ -187,16 +187,16 @@ divmod_minus:
 divmod_minus_minus:
       sub x8, zero, x8
       call u_divmod
-      lw x15, 0(x9)
+      lc x15, 0(x9)
       sub x15, zero, x15
-      sw x15, 0(x9)
+      sc x15, 0(x9)
       j divmod_finished
 
 divmod_minus_plus:
       call u_divmod
-      lw x15, 0(x9)
+      lc x15, 0(x9)
       sub x15, zero, x15
-      sw x15, 0(x9)
+      sc x15, 0(x9)
       sub x8, zero, x8
       j divmod_finished
 

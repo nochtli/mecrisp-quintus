@@ -1,0 +1,17 @@
+#!/bin/bash
+
+cat ../common/conditional.txt ../common/disassembler-rv32im.txt ../common/fixpt-math-lib.fs ../common/dictionary-tools.txt > included.txt
+
+fpc -XX quintusemu-thejas32.pas
+rm -f quintusemu-thejas32.o
+
+{
+   echo -e "compiletoflash\n"
+   cat included.txt
+   echo -e "hex 00210000 DABBAD00 !\n"
+   # cat -
+} | ./quintusemu-thejas32 mecrisp-quintus-thejas32.bin
+
+echo -e ""
+
+mv coredump.bin mecrisp-quintus-thejas32-with-tools.bin

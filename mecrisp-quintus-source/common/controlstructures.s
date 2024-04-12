@@ -65,7 +65,7 @@ generate_sb_encoding:
 uj_encoding_q:
 #------------------------------------------------------------------------------
 
-  li x15, 0xFFF80000 # Range BIT19 to BIT1, but lowest bit is ignored.
+  li x15, -524288 # 0xFFF80000 # Range BIT19 to BIT1, but lowest bit is ignored.
   and x14, x8, x15
   beq x14, x15, 1f
   bne x14, zero, false
@@ -81,7 +81,7 @@ uj_encoding_q:
 sb_encoding_q:
 #------------------------------------------------------------------------------
 
-  li x15, 0xFFFFF000 # Range BIT12 to BIT1, but lowest bit is ignored.
+  li x15, -4096 # 0xFFFFF000 # Range BIT12 to BIT1, but lowest bit is ignored.
   and x14, x8, x15
   beq x14, x15, 1f
   bne x14, zero, false
@@ -140,6 +140,7 @@ sb_encoding: # ( addr -- x ) For conditional jump
 
   ret
 
+  .ifndef RV64
   .ifdef compressed_isa
 
 #------------------------------------------------------------------------------
@@ -206,6 +207,7 @@ cj_encoding: # ( addr -- x ) For c.jal und c.j
   ret
 
   .endif # compressed_isa
+  .endif # ifndef RV64
 
   .endif # Tools for RISC-V
 
@@ -218,7 +220,7 @@ nullprobekomma: # ( -- ) Get TOS into x15 for a following conditional jump.
 
   .ifdef mipscore
     pushdaconst 0x00000025 | reg_tmp1 << 11 | reg_tos << 21
-    call komma
+    call wkomma
   .else
 
   .ifdef compressed_isa
@@ -226,7 +228,7 @@ nullprobekomma: # ( -- ) Get TOS into x15 for a following conditional jump.
     call hkomma
   .else
     pushdaconst 0x00000013 | reg_tmp1 << 7  | reg_tos << 15 # mv x15, x8
-    call komma
+    call wkomma
   .endif
 
   .endif
@@ -254,7 +256,7 @@ struktur_then:
     # ( Sprunglücke )
     call here
     # ( Sprunglücke Sprungziel )
-    lw x15, 0(x9)
+    lc x15, 0(x9)
     sub x8, x8, x15
 
     .ifdef mipscore
@@ -275,7 +277,7 @@ struktur_then:
     # ( Sprunglücke )
     call here
     # ( Sprunglücke Sprungziel )
-    lw x15, 0(x9)
+    lc x15, 0(x9)
     sub x8, x8, x15
 
     .ifdef mipscore
@@ -332,7 +334,7 @@ struktur_ahead: # ( -- Adresse-für-Sprung 5 )   ( -- Address-for-Jump 5 )
 
   .ifdef mipscore # NOP for branch delay slot
     pushdaconst 0
-    call komma
+    call wkomma
   .endif
 
   pop x1
@@ -408,12 +410,12 @@ struktur_again:  # ( Sprungziel 1 -- )           # Unconditional loop
 
 1:
   .ifdef mipscore # NOP for branch delay slot
-    call komma
+    call wkomma
     pushdaconst 0
   .endif
 
   pop x1
-    j komma
+  j wkomma
 
 #------------------------------------------------------------------------------
   Definition Flag_immediate_compileonly, "begin"

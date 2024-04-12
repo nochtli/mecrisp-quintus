@@ -90,7 +90,7 @@ decimal
     $10000 log,                \ Einsprungpunkt
     52 log,                    \ Anfang des Programm-Headers in der Datei
     0 log,                     \ Anfang des Section-Headers (haben wir nicht)
-    $5000200 log,                     \ Flags: 0 (keine)
+    1 log,                     \ Flags: RVC
     52 hlog,                   \ Größe des ELF-Headers: 52 Bytes
     32 hlog,                   \ Größe eines Programm-Headers: 32 Bytes
     1  hlog,                   \ Anzahl der Programm-Header: 1

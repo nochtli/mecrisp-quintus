@@ -1,0 +1,30 @@
+#!/bin/bash
+
+stty -icanon -echo
+
+{
+   echo -e "compiletoflash\n"
+   cat ../common/conditional.txt
+   cat ../common/disassembler-rv64imc.txt
+   cat ../common/dictionary-tools.txt
+   cat save.txt
+   echo -e "save\" mecrisp-quintus-linux-rv64imc-with-disassembler\"\n"
+   echo -e "bye\n"
+   # cat -
+} | qemu-riscv64-static mecrisp-quintus-linux-rv64imc
+
+{
+   echo -e "compiletoflash\n"
+   cat ../common/conditional.txt
+   cat ../common/acrobatics.txt
+   cat ../common/disassembler-rv64imc.txt
+   cat ../common/dictionary-tools.txt
+   cat save.txt
+   echo -e "save\" mecrisp-quintus-linux-rv64imc-with-acrobatics-and-disassembler\n"
+   echo -e "bye\n"
+   # cat -
+} | qemu-riscv64-static mecrisp-quintus-linux-rv64imc
+
+stty sane
+
+echo -e ""

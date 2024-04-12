@@ -19,11 +19,12 @@
 # Die Routinen, die nötig sind, um neue Definitionen zu kompilieren.
 # The compiler - parts that are the same for Flash and for Ram.
 
+  .ifdef mipscore
+
 # -----------------------------------------------------------------------------
   Definition Flag_visible, "registerliteral," # ( x Register -- )
 registerliteralkomma: # Compile code to put a literal constant into a register.
 # -----------------------------------------------------------------------------
-  .ifdef mipscore
 
   beq x8, zero, ddrop_vektor # Der Null-Register soll nie geladen werden
 
@@ -40,7 +41,7 @@ registerliteralkomma: # Compile code to put a literal constant into a register.
     slli x15, x10, 16
     or x8, x8, x15
     or x8, x8, x14
-    call komma
+    call wkomma
     j 3f
 
 
@@ -61,7 +62,7 @@ registerliteralkomma: # Compile code to put a literal constant into a register.
   or x8, x8, x15
   li x15, 0x3C000000 # lui zero, 0
   or x8, x8, x15
-  call komma
+  call wkomma
 
   # Low-Part
   andi x8, x8, 0xFFFF
@@ -75,21 +76,38 @@ registerliteralkomma: # Compile code to put a literal constant into a register.
   or x8, x8, x15
   li x14, 0x34000000 # ori zero, zero, 0
   or x8, x8, x14
-  call komma
+  call wkomma
 
 3:pop_x1_x10
   ret
 
   .else
 
+# -----------------------------------------------------------------------------
+  Definition Flag_visible, "registerliteral," # ( x Register -- )
+registerliteralkomma: # Compile code to put a literal constant into a register.
+# -----------------------------------------------------------------------------
+
   beq x8, zero, ddrop_vektor # Der Null-Register soll nie geladen werden
 
   push_x1_x10
   popda x10 # Target register
 
+  .ifdef RV64
+
+  # Probe ob die Konstante über die Zwei-Opcode-Grenzen hinausragt:
+
+  li x15, 0xFFFFFFFF80000000
+  and x14, x8, x15
+  beq x14, x15, 1f
+  bne x14, zero, registerliteralkomma64bit
+1:
+
+  .endif
+
   # Probe, ob sich die Konstante nicht auch kürzer laden lässt:
 
-  li x15, 0xFFFFF800
+  li x15, -2048 # 0xFFFFF800
   and x14, x8, x15
   beq x14, x15, 1f
   bne x14, zero, 2f
@@ -98,7 +116,7 @@ registerliteralkomma: # Compile code to put a literal constant into a register.
 
   .ifdef compressed_isa
     # Passende Konstante ?
-    li x15, 0xFFFFFE0
+    li x15, -32 # 0xFFFFFFE0
     and x14, x8, x15
     beq x14, x15, 6f
     bne x14, zero, 7f
@@ -107,7 +125,7 @@ registerliteralkomma: # Compile code to put a literal constant into a register.
     andi x15, x8, 0x1f # Maskiere die Konstante
     slli x15, x15, 2
 
-    srli x14,  x8, 31 # Schiebe das Vorzeichenbit auf Position 12
+    srli x14,  x8, SIGNSHIFT # Schiebe das Vorzeichenbit auf Position 12
     slli x14, x14, 12
 
     li x8, 0x4001
@@ -126,7 +144,7 @@ registerliteralkomma: # Compile code to put a literal constant into a register.
   sll x14, x10, 7  # Zielregister
   or  x15, x15, x14  #  hinzuverodern
   or x8, x8, x15
-  call komma
+  call wkomma
   j 4f
 
 2:# Lange Variante mit zwei Opcodes.
@@ -135,7 +153,7 @@ registerliteralkomma: # Compile code to put a literal constant into a register.
   li x15, 0x800
   and x15, x15, x8
   beq x15, zero, 3f
-    li x15, 0xFFFFF000
+    li x15, -4096 # 0xFFFFF000
     xor x8, x8, x15
 3:
 
@@ -144,7 +162,7 @@ registerliteralkomma: # Compile code to put a literal constant into a register.
     beq x10, x15, 6f # Passt nicht, langen Opcode schreiben
 
     # Prüfe, ob die Konstante in c.lui passt. Bits 17:12, mit Vorzeichenerweiterung.
-    li x15, 0xFFFE0000
+    li x15, -131072 # 0xFFFE0000
     and x14, x8, x15
     beq x14, x15, 1f   # Passt.
     bne x14, zero, 6f  # Passt nicht, langen Opcode schreiben
@@ -167,14 +185,19 @@ registerliteralkomma: # Compile code to put a literal constant into a register.
   .endif
 
 6:dup
-  li x15, 0xFFFFF000
+  li x15, -4096 # 0xFFFFF000
   and x8, x8, x15
   ori  x8, x8, 0x000000037  # lui x0, ...
   slli x14, x10, 7  # Zielregister
   or  x8, x8, x14  #  hinzuverodern
-  call komma
+  call wkomma
 
-7:slli x8, x8, 20
+7:
+  .ifdef RV64
+  slliw x8, x8, 20
+  .else
+  slli x8, x8, 20
+  .endif
   bne x8, zero, 5f
     drop # Falls die Konstante für XORI 0 ist, brauche ich keinen XORI-Opcode zu schreiben.
     j 4f
@@ -185,11 +208,136 @@ registerliteralkomma: # Compile code to put a literal constant into a register.
   slli x14, x10, 15 # Quellregister
   or  x15, x15, x14  #  hinzuverodern
   or x8, x8, x15
-  call komma
+  call wkomma
 
 4:pop_x1_x10
   ret
   .endif
+
+
+.ifdef RV64
+
+# Variante die direkt den Register füllt und ohne Hilfsregister auskommt
+
+registerliteralkomma64bit:
+
+  push x11
+
+  # Zielregister in x10
+  # Zu erledigender Schub in x11
+  # Zu ladende Konstante auf dem Stack (in x8)
+
+  dup
+
+  # Die oberen 32 Bits in den Zielregister laden lassen
+
+  srai x8, x8, 32
+  pushda x10
+  call registerliteralkomma
+
+  # Bis zu drei slli/xori Paare schreiben, um die restlichen Bits zu laden.
+
+  li x11, 10 # Schubweite
+
+  srli x15, x8, 22
+  andi x15, x15, 0x3FF # 10 Bits nehmen
+  beq x15, zero, 1f
+    dup
+    slli x8, x15, 20   # Immediate
+    slli x15, x10, 7   # Destination register
+    or x8, x8, x15
+    slli x15, x10, 15  # Source register
+    or x8, x8, x15
+    li x15, 0x4013     # xori x0, x0, ...
+    or x8, x8, x15
+    call write_slli_intern
+    call wkomma
+1:
+
+  addi x11, x11, 11 # Schubweite
+
+  srli x15, x8, 11
+  andi x15, x15, 0x7FF # 11 Bits nehmen
+  beq x15, zero, 1f
+    dup
+    slli x8, x15, 20   # Immediate
+    slli x15, x10, 7   # Destination register
+    or x8, x8, x15
+    slli x15, x10, 15  # Source register
+    or x8, x8, x15
+    li x15, 0x4013     # xori x0, x0, ...
+    or x8, x8, x15
+    call write_slli_intern
+    call wkomma
+1:
+
+  addi x11, x11, 11 # Schubweite
+  call write_slli_intern # Es muss auf jeden Fall mindestens einmal geschoben werden, um die hohen 32 Bits an die richtige Stelle zu bringen.
+
+  andi x15, x8, 0x7FF # 11 Bits nehmen
+  beq x15, zero, 1f
+    dup
+    slli x8, x15, 20  # Immediate
+    slli x15, x10, 7  # Destination register
+    or x8, x8, x15
+    slli x15, x10, 15 # Source register
+    or x8, x8, x15
+    li x15, 0x4013    # xori x0, x0, ...
+    or x8, x8, x15
+    call wkomma
+1:drop
+
+  pop x11
+  pop_x1_x10
+  ret
+
+
+.ifdef compressed_isa
+
+write_slli_intern:
+  push x1
+
+  pushdaconst 0x0002   # c.slli zero, 0
+
+  andi x15, x11, 0x1F  # Shift amount, die unteren fünf Bits
+  slli x15, x15, 2
+  or x8, x8, x15
+
+  andi x15, x11, 0x20  # Shift amount, das sechste Bit
+  slli x15, x15, 7     # Immediate bit 6 --> Opcode bit 12
+  or x8, x8, x15
+
+  slli x15, x10, 7   # Source and destination register
+  or x8, x8, x15
+  call hkomma
+
+  li x11, 0 # Schub abgearbeitet.
+
+  pop x1
+  ret
+
+.else
+
+write_slli_intern:
+  push x1
+
+  pushdaconst 0x00001013 # slli zero, zero, 0
+  slli x15, x11, 20 # Shift amount
+  or x8, x8, x15
+  slli x15, x10, 7  # Destination register
+  or x8, x8, x15
+  slli x15, x10, 15 # Source register
+  or x8, x8, x15
+  call wkomma
+
+  li x11, 0 # Schub abgearbeitet.
+
+  pop x1
+  ret
+
+.endif
+
+.endif
 
 # -----------------------------------------------------------------------------
   Definition Flag_visible, "literal," # ( x -- )
@@ -230,7 +378,7 @@ callkomma: # Hier kann ich noch eine Probe einfügen, ob ich nicht auch einen ku
   call registerliteralkomma
 
   pushdaconst 0x0000F809 | reg_tmp1 << 21 # jalr x1, x15
-  call komma
+  call wkomma
   j 2f
 
 1:# Generate JAL opcode
@@ -239,16 +387,16 @@ callkomma: # Hier kann ich noch eine Probe einfügen, ob ich nicht auch einen ku
   and x8, x8, x15
   li x15, 0x0C000000
   or  x8, x8, x15
-  call komma
+  call wkomma
 
 2: # Fill nop into branch delay slot
   pushdaconst 0
-  call komma
+  call wkomma
 
   pop x1
   ret
 
-  .else
+  .else # RISC-V
 
   push x1
 
@@ -256,6 +404,7 @@ callkomma: # Hier kann ich noch eine Probe einfügen, ob ich nicht auch einen ku
   call here
   call minus
 
+  .ifndef RV64
   .ifdef compressed_isa
     call cj_encoding_q
     popda x15
@@ -269,6 +418,7 @@ callkomma: # Hier kann ich noch eine Probe einfügen, ob ich nicht auch einen ku
 
 3:
   .endif
+  .endif
 
   call uj_encoding_q
   popda x15
@@ -279,10 +429,34 @@ callkomma: # Hier kann ich noch eine Probe einfügen, ob ich nicht auch einen ku
     li x15, 0x000000ef # jal x1, 0
     or x8, x8, x15
     pop x1
-    j komma
-
+    j wkomma
 
 2:drop
+
+  .ifdef RV64
+
+  # Probe ob die Konstante über die Zwei-Opcode-Grenzen hinausragt:
+
+  li x15, 0xFFFFFFFF80000000
+  and x14, x8, x15
+  beq x14, x15, 1f
+  beq x14, zero, 1f
+
+    pushdaconst reg_tmp1
+    call registerliteralkomma
+
+    .ifdef compressed_isa
+      pushdaconst 0x9002 | reg_tmp1 << 7 # c.jr reg_tmp1
+      pop x1
+      j hkomma
+    .else
+      pushdaconst 0 # Um in den weiteren Fluss dieser Routine wieder einzusteigen
+      j callkomma_64bitaddress
+    .endif
+1:
+
+  .endif
+
   # Korrektur fürs negative Vorzeichen
   li x15, 0x800
   and x15, x15, x8
@@ -292,16 +466,17 @@ callkomma: # Hier kann ich noch eine Probe einfügen, ob ich nicht auch einen ku
 1:
 
   dup
-  li x15, 0xFFFFF000
+  li x15, -4096 # 0xFFFFF000
   and x8, x8, x15
   ori  x8, x8, 0x00000037 | reg_tmp1 << 7  # lui x15, ...
-  call komma
+  call wkomma
 
   sll x8, x8, 20
+callkomma_64bitaddress:
   li x15, 0x000000e7 | reg_tmp1 << 15 # jalr x1, x15, 0
   or x8, x8, x15
   pop x1
-  j komma
+  j wkomma
 
   .endif
 
@@ -347,14 +522,14 @@ inlinekomma:
   beq x14, x15, 2f
 
     pushda x14
-    call komma
+    call wkomma
     addi x8, x8, 4
     j 1b
 
 2:lw x8, 4(x8) # Check branch delay slot for an additional opcode.
   beq x8, zero, 3f
 
-    call komma
+    call wkomma
     j 4f
 
 3:drop
@@ -370,11 +545,19 @@ inlinekomma:
 1:# -------------------------------------
 
   lhu x15, 0(x8)
+  .ifdef RV64
+  li x14, 0x1161
+  .else
   li x14, 0x1171
+  .endif
   bne x15, x14, 2f
 
     lhu x15, 2(x8)
+    .ifdef RV64
+    li x14, 0xE006
+    .else
     li x14, 0xC006
+    .endif
     bne x15, x14, 2f
 
       addi x8, x8, 4 # Do not inline these if they appear in a definition
@@ -382,11 +565,19 @@ inlinekomma:
 2:# -------------------------------------
 
   lhu x15, 0(x8)
+  .ifdef RV64
+  li x14, 0x6082
+  .else
   li x14, 0x4082
+  .endif
   bne x15, x14, 2f
 
     lhu x15, 2(x8)
+    .ifdef RV64
+    li x14, 0x0121
+    .else
     li x14, 0x0111
+    .endif
     bne x15, x14, 2f
 
       lhu x15, 4(x8)
@@ -438,38 +629,54 @@ inlinekomma:
 
 1:# -------------------------------------
 
-  lw x14, 0(x8)
-  li x15, 0xFFC10113  # addi   x2, x2, -4
+  lwu x14, 0(x8)
+  .ifdef RV64
+  li x15, 0xFF810113  # addi x2, x2, -8
+  .else
+  li x15, 0xFFC10113  # addi x2, x2, -4
+  .endif
   bne x14, x15, 2f
 
-    lw x14, 4(x8)
-    li x15, 0x00112023  # sw     x1, 0 (x2)
+    lwu x14, 4(x8)
+    .ifdef RV64
+    li x15, 0x00113023  # sd x1, 0(x2)
+    .else
+    li x15, 0x00112023  # sw x1, 0(x2)
+    .endif
     bne x14, x15, 2f
 
       addi x8, x8, 8  # Do not inline these if they appear in a definition
 
 2:# -------------------------------------
 
-  lw x14, 0(x8)
-  li x15, 0x00012083  # lw     x1, 0 (x2)
+  lwu x14, 0(x8)
+  .ifdef RV64
+  li x15, 0x00013083  # ld x1, 0(x2)
+  .else
+  li x15, 0x00012083  # lw x1, 0(x2)
+  .endif
   bne x14, x15, 2f
 
-    lw x14, 4(x8)
-    li x15, 0x00410113  # addi   x2, x2, 4
+    lwu x14, 4(x8)
+    .ifdef RV64
+    li x15, 0x00810113  # addi x2, x2, 8
+    .else
+    li x15, 0x00410113  # addi x2, x2, 4
+    .endif
     bne x14, x15, 2f
 
-      lw x14, 8(x8)
+      lwu x14, 8(x8)
       li x15, 0x00008067  # jalr   zero, 0 (x1) Ret-Opcode
       beq x14, x15, 3f
 
 2:# -------------------------------------
 
-  lw x14, 0(x8)
+  lwu x14, 0(x8)
   li x15, 0x00008067 # Ret-Opcode
   beq x14, x15, 3f
 
     pushda x14
-    call komma
+    call wkomma
     addi x8, x8, 4
     j 1b
 
@@ -531,7 +738,7 @@ suchedefinitionsende:
 
   li x14, 0x00008067 # Ret-Opcode
 
-1:lw x15, 0(x8)
+1:lwu x15, 0(x8)
   addi x8, x8, 4
   bne x15, x14, 1b
 
@@ -547,8 +754,8 @@ stringkomma: # Fügt ein String an das Dictionary an  Write a string in Dictiona
   push_x1_x10_x13
 
   andi x10, x8, 0xFF   # Maximum counted string length
-  lw x11, 0(x9)        # Fetch address of string
-  addi x9, x9, 4
+  lc x11, 0(x9)        # Fetch address of string
+  addi x9, x9, CELL
   call clearbytes
   call addbyte # Strings begins with its length byte
 
@@ -583,7 +790,7 @@ flushbytes:
   .ifdef compressed_isa
   call hkomma
   .else
-  call komma
+  call wkomma
   .endif
 
   pop x1
@@ -605,7 +812,7 @@ tick: # Nimmt das nächste Token aus dem Puffer, suche es und gibt den Einsprung
   push_x1_x10_x11
   call token
 
-    lw x10, 0(x9) # Save string address and length for later use
+    lc x10, 0(x9) # Save string address and length for later use
     mv x11, x8
 
   call find
@@ -614,7 +821,7 @@ tick: # Nimmt das nächste Token aus dem Puffer, suche es und gibt den Einsprung
   bne x8, zero, 1f # Probe entry address
 
     pushdatos
-    sw x10, 0(x9)
+    sc x10, 0(x9)
     mv x8, x11
     j type_not_found_quit
 
@@ -656,26 +863,38 @@ exitkomma:  # Writes a ret opcode into current definition. Take care with inlini
   .ifdef mipscore
     push x1
     pushdaconst 0x8C5F0000
-    call komma
+    call wkomma
     pushdaconst 0x03E00008
-    call komma
+    call wkomma
     pushdaconst 0x24420004
     pop x1
-    j komma
+    j wkomma
   .else
 
     .ifdef compressed_isa
       push x1
+      .ifdef RV64
+      pushdaconst 0x01216082 # Gleich zwei Opcodes auf einmal laden spart Platz
+      call wkomma
+      .else
       pushdaconst 0x01114082 # Gleich zwei Opcodes auf einmal laden spart Platz
-      call komma
+      call wkomma
+      .endif
       pop x1
       j retkomma
     .else
       push x1
-      pushdaconst 0x00012083 # lw	ra,0(sp)
-      call komma
-      pushdaconst 0x00410113 # addi	sp,sp,4
-      call komma
+      .ifdef RV64
+      pushdaconst 0x00013083 # ld   x1, 0(x2)
+      call wkomma
+      pushdaconst 0x00810113 # addi x2, x2, 8
+      call wkomma
+      .else
+      pushdaconst 0x00012083 # lw   x1, 0(x2)
+      call wkomma
+      pushdaconst 0x00410113 # addi x2, x2, 4
+      call wkomma
+      .endif
       pop x1
       j retkomma
     .endif
@@ -691,9 +910,9 @@ retkomma: # Separat, weil MIPS einen Branch Delay Slot NOP braucht.
     push x1
 
     pushdaconst 0x03E00008
-    call komma
+    call wkomma
     pushdaconst 0x00000000
-    call komma
+    call wkomma
 
     pop x1
     ret
@@ -703,7 +922,7 @@ retkomma: # Separat, weil MIPS einen Branch Delay Slot NOP braucht.
       j hkomma
     .else
       pushdaconst 0x00008067 # ret
-      j komma
+      j wkomma
     .endif
   .endif
 
@@ -715,7 +934,7 @@ retkomma: # Separat, weil MIPS einen Branch Delay Slot NOP braucht.
   Definition Flag_immediate_compileonly, "recurse" # Für Rekursion. Führt das gerade frische Wort aus. Execute freshly defined definition.
 #------------------------------------------------------------------------------
   pushdaaddrf Einsprungpunkt
-  lw x8, 0(x8)
+  lc x8, 0(x8)
   j callkomma
 
 # -----------------------------------------------------------------------------
@@ -725,7 +944,7 @@ retkomma: # Separat, weil MIPS einen Branch Delay Slot NOP braucht.
   pushdatos
   laf x8, state
   ret
-  .word 0
+  .varinit 0
 
 # -----------------------------------------------------------------------------
   Definition Flag_visible|Flag_variable, "(sp)" # ( -- addr )
@@ -734,7 +953,7 @@ retkomma: # Separat, weil MIPS einen Branch Delay Slot NOP braucht.
   pushdatos
   laf x8, Datenstacksicherung
   ret
-  .word 0
+  .varinit 0
 
 #------------------------------------------------------------------------------
   Definition Flag_visible, "]" # In den Compile-Modus übergehen  Switch to compile mode
@@ -749,7 +968,7 @@ executemode:
 # -----------------------------------------------------------------------------
   li x15, 0
 1:laf x14, state
-  sw x15, 0(x14)
+  sc x15, 0(x14)
   ret
 
 # -----------------------------------------------------------------------------
@@ -758,7 +977,7 @@ executemode:
   push x1
 
   laf x14, Datenstacksicherung # Setzt den Füllstand des Datenstacks zur Probe.
-  sw x9, 0(x14)                # Save current datastack pointer to detect structure mismatch later.
+  sc x9, 0(x14)                # Save current datastack pointer to detect structure mismatch later.
 
   call create
   # call push_x1_komma
@@ -774,24 +993,35 @@ push_x1_komma:
     push x1
 
     pushdaconst 0x2442FFFC
-    call komma
+    call wkomma
     pushdaconst 0xAC5F0000
-    call komma
+    call wkomma
 
     pop x1
     ret
   .else
 
     .ifdef compressed_isa
+      .ifdef RV64
+      pushdaconst 0xE0061161 # Gleich zwei Opcodes auf einmal laden spart Platz
+      .else
       pushdaconst 0xC0061171 # Gleich zwei Opcodes auf einmal laden spart Platz
-      j komma
+      .endif
+      j wkomma
     .else
       push x1
 
-      pushdaconst 0xffc10113 # addi sp,sp,-4
-      call komma
-      pushdaconst 0x00112023 # sw ra,0(sp)
-      call komma
+      .ifdef RV64
+      pushdaconst 0xff810113 # addi x2, x2, -8
+      call wkomma
+      pushdaconst 0x00113023 # sd x1, 0(x2)
+      call wkomma
+      .else
+      pushdaconst 0xffc10113 # addi x2, x2, -4
+      call wkomma
+      pushdaconst 0x00112023 # sw x1, 0(x2)
+      call wkomma
+      .endif
 
       pop x1
       ret
@@ -805,7 +1035,7 @@ push_x1_komma:
   push x1
 
   laf x14, Datenstacksicherung # Prüft den Füllstand des Datenstacks.
-  lw x15, 0(x14)               # Check fill level of datastack.
+  lc x15, 0(x14)               # Check fill level of datastack.
   beq x15, x9, 1f
     writeln " Stack not balanced."
     j quit
@@ -814,7 +1044,7 @@ push_x1_komma:
   # Check if writing a push x1 / pop x1 frame is necessary.
 
   laf x14, state
-  lw x14, 0(x14)
+  lc x14, 0(x14)
   li x15, 1
   bne x14, x15, 2f
     call retkomma
@@ -830,6 +1060,9 @@ push_x1_komma:
 execute:
 # -----------------------------------------------------------------------------
   popda x15
+  .ifdef thejas32_pipeline_bug
+  fence
+  .endif
   .ifdef mipscore
   jr x15
   .else

@@ -30,17 +30,17 @@
   pushdouble x14, x15
 
   laf x14, Pufferstand  # Save >in and set to zero
-  lw x15, 0(x14)
+  lc x15, 0(x14)
   push x15
   li x15, 0
-  sw x15, 0(x14)
+  sc x15, 0(x14)
 
   call setsource          # Set new source
   call interpret          # Interpret
 
   laf x14, Pufferstand  # Restore >in
   pop x15
-  sw x15, 0(x14)
+  sc x15, 0(x14)
 
   # 2r>
   popdouble x15, x14
@@ -55,7 +55,7 @@
 #------------------------------------------------------------------------------
   pushdaaddrf hook_interpret
   ret
-  .word interpret_vanilla
+  .varinit interpret_vanilla
 
 # -----------------------------------------------------------------------------
   Definition Flag_visible, "interpret" # ( -- )
@@ -63,8 +63,11 @@ interpret:
 # -----------------------------------------------------------------------------
 
   laf x15, hook_interpret
-  lw x15, 0(x15)
+  lc x15, 0(x15)
 
+  .ifdef thejas32_pipeline_bug
+  fence
+  .endif
   .ifdef mipscore
   jr x15
   .else
@@ -100,12 +103,12 @@ interpret_vanilla:
   # Konstantenfaltungszeiger setzen, falls er das noch nicht ist.
   # Set Constant-Folding-Pointer
   laf x14, konstantenfaltungszeiger
-  lw x7, 0(x14)
+  lc x7, 0(x14)
   bne x7, zero, 3f
     # Konstantenfaltungszeiger setzen.
     # If not set yet, set it now.
     mv x7, x9
-    sw x7, 0(x14)
+    sc x7, 0(x14)
 3:
 
 # -----------------------------------------------------------------------------
@@ -142,7 +145,7 @@ interpret_vanilla:
     # Nicht gefunden. Ein Fall für Number.
     # Entry-Address is zero if not found ! Note that Flags have very special meanings in Mecrisp !
 
-    lw x10, 0(x9)
+    lc x10, 0(x9)
     mv x11, x8
 
     call number
@@ -176,12 +179,12 @@ type_not_found_quit:
   #  x7: Konstantenfaltungszeiger               Constant folding pointer
 
   laf x13, state
-  lw x13, 0(x13)
+  lc x13, 0(x13)
   bne x13, zero, 5f
     # Im Ausführzustand.  Execute.
     laf x14, konstantenfaltungszeiger
     li x7, 0   # Konstantenfaltungszeiger löschen  Clear constant folding pointer
-    sw x7, 0(x14)  # Do not collect literals for folding in execute mode. They simply stay on stack.
+    sc x7, 0(x14)  # Do not collect literals for folding in execute mode. They simply stay on stack.
 
     li x15, Flag_immediate_compileonly & ~Flag_visible
     and x13, x11, x15
@@ -221,7 +224,7 @@ ausfuehren:
     # Calculate number of folding constants available.
 
     sub x13, x7, x9 # Konstantenfüllstandszeiger - Aktuellen Stackpointer
-    srli x13, x13, 2      # Durch 4 teilen  Divide by 4 to get number of stack elements.
+    srli x13, x13, CELLSHIFT # Divide to get number of stack elements.
     # Number of folding constants now available in x13.
 
     # Prüfe die Faltbarkeit des aktuellen Tokens:
@@ -280,7 +283,7 @@ konstantenschleife:
   # Check if writing a push x1 / pop x1 frame is necessary.
 
   laf x14, state
-  lw x14, 0(x14)
+  lc x14, 0(x14)
   li x15, 1
   bne x14, x15, 2f
 
@@ -332,12 +335,12 @@ konstanteninnenschleife:
     # Die geschriebenen Konstanten herunterwerfen.
     # Drop constants written.
 
-    addi x9, x7, -4 # TOS wurde beim drauflegen der Konstanten gesichert.
+    addi x9, x7, -CELL # TOS wurde beim drauflegen der Konstanten gesichert.
     drop         # Das alte TOS aus seinem Platz auf dem Stack zurückholen.
 
 7:laf x14, konstantenfaltungszeiger
   li x7, 0   # Konstantenfaltungszeiger löschen  Clear constant folding pointer.
-  sw x7, 0(x14)
+  sc x7, 0(x14)
   pop x1
   ret
 
@@ -348,7 +351,7 @@ konstanteninnenschleife:
 #------------------------------------------------------------------------------
   pushdaaddrf hook_quit
   ret
-  .word quit_vanilla  # Simple loop for default
+  .varinit quit_vanilla  # Simple loop for default
 
 # -----------------------------------------------------------------------------
   Definition Flag_visible, "quit" # ( -- )
@@ -367,30 +370,33 @@ quit:
 
   laf x14, base
   li x15, 10      # Base decimal
-  sw x15, 0(x14)
+  sc x15, 0(x14)
 
   laf x14, state
   li x15, 0       # Execute mode
-  sw x15, 0(x14)
+  sc x15, 0(x14)
 
   laf x14, konstantenfaltungszeiger
   # li x15, 0       # Clear constant folding pointer
-  sw x15, 0(x14)
+  sc x15, 0(x14)
 
   laf x14, Pufferstand
   # li x15, 0       # Set >IN to 0
-  sw x15, 0(x14)
+  sc x15, 0(x14)
 
   laf x14, current_source
   # li x15, 0       # Empty TIB is source
-  sw x15, 0(x14)
+  sc x15, 0(x14)
   laf x15, Eingabepuffer
-  sw x15, 4(x14)
+  sc x15, CELL(x14)
 
 quit_intern:
   laf x15, hook_quit
-  lw x15, 0(x15)
+  lc x15, 0(x15)
 
+  .ifdef thejas32_pipeline_bug
+  fence
+  .endif
   .ifdef mipscore
   jr x15
   .else

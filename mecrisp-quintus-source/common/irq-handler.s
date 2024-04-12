@@ -27,7 +27,7 @@
   pushdatos
   laf x8, irq_hook_\Name
   ret
-  .word \Routine  # Startwert für unbelegte Interrupts   Start value for unused interrupts
+  .varinit \Routine  # Startwert für unbelegte Interrupts   Start value for unused interrupts
 
   .ifb \Alignment
     .align 2
@@ -37,8 +37,8 @@
 
 \Asmname:
 
-  addi sp, sp, -13*4
-  sw x1,  12*4(sp)
+  addi sp, sp, -13*CELL
+  sc x1,  12*CELL(sp)
   laf x1, irq_hook_\Name
   j irq_common
 
@@ -48,38 +48,41 @@
 irq_common: # Common framework for all interrupt entries
 #------------------------------------------------------------------------------
 
-  sw x14, 11*4(sp) # Required for Forth core...
-  sw x15, 10*4(sp)
+  sc x14, 11*CELL(sp) # Required for Forth core...
+  sc x15, 10*CELL(sp)
 
-  sw x16,  9*4(sp) # Required for Acrobatics only...
-  sw x17,  8*4(sp)
-  sw x18,  7*4(sp)
-  sw x19,  6*4(sp)
-  sw x20,  5*4(sp)
-  sw x21,  4*4(sp)
-  sw x22,  3*4(sp)
-  sw x23,  2*4(sp)
-  sw x24,  1*4(sp)
-  sw x25,  0*4(sp)
+  sc x16,  9*CELL(sp) # Required for Acrobatics only...
+  sc x17,  8*CELL(sp)
+  sc x18,  7*CELL(sp)
+  sc x19,  6*CELL(sp)
+  sc x20,  5*CELL(sp)
+  sc x21,  4*CELL(sp)
+  sc x22,  3*CELL(sp)
+  sc x23,  2*CELL(sp)
+  sc x24,  1*CELL(sp)
+  sc x25,  0*CELL(sp)
 
-  lw x1, 0(x1)
+  lc x1, 0(x1)
+  .ifdef thejas32_pipeline_bug
+  fence
+  .endif
   jalr x1, x1, 0
 
-  lw x25,  0*4(sp) # Required for Acrobatics only...
-  lw x24,  1*4(sp)
-  lw x23,  2*4(sp)
-  lw x22,  3*4(sp)
-  lw x21,  4*4(sp)
-  lw x20,  5*4(sp)
-  lw x19,  6*4(sp)
-  lw x18,  7*4(sp)
-  lw x17,  8*4(sp)
-  lw x16,  9*4(sp)
+  lc x25,  0*CELL(sp) # Required for Acrobatics only...
+  lc x24,  1*CELL(sp)
+  lc x23,  2*CELL(sp)
+  lc x22,  3*CELL(sp)
+  lc x21,  4*CELL(sp)
+  lc x20,  5*CELL(sp)
+  lc x19,  6*CELL(sp)
+  lc x18,  7*CELL(sp)
+  lc x17,  8*CELL(sp)
+  lc x16,  9*CELL(sp)
 
-  lw x15, 10*4(sp) # Required for Forth core...
-  lw x14, 11*4(sp)
-  lw x1,  12*4(sp)
+  lc x15, 10*CELL(sp) # Required for Forth core...
+  lc x14, 11*CELL(sp)
+  lc x1,  12*CELL(sp)
 
-  addi sp, sp, 13*4
+  addi sp, sp, 13*CELL
 
   mret

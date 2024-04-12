@@ -28,25 +28,25 @@
 
   laf x14, base
   li x15, 10      # Base decimal
-  sw x15, 0(x14)
+  sc x15, 0(x14)
 
   laf x14, state
   li x15, 0       # Execute mode
-  sw x15, 0(x14)
+  sc x15, 0(x14)
 
   laf x14, konstantenfaltungszeiger
   # li x15, 0       # Clear constant folding pointer
-  sw x15, 0(x14)
+  sc x15, 0(x14)
 
   laf x14, Pufferstand
   # li x15, 0       # Set >IN to 0
-  sw x15, 0(x14)
+  sc x15, 0(x14)
 
   laf x14, current_source
   # li x15, 0       # Empty TIB is source
-  sw x15, 0(x14)
+  sc x15, 0(x14)
   laf x15, Eingabepuffer
-  sw x15, 4(x14)
+  sc x15, CELL(x14)
 
 
    # Suche nach der init-Definition:

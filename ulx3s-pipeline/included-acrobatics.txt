@@ -88,21 +88,41 @@
 
 compiletoflash
 
+8 cells 64 =
+[if]
+    : RV64 ." RISC-V 64 Bits" cr ;
+    3 constant CELLSHIFT
+   63 constant SIGNSHIFT
+  $3F constant SHIFTMASK
+   64 constant CELLBITS
+[else]
+    2 constant CELLSHIFT
+   31 constant SIGNSHIFT
+  $1F constant SHIFTMASK
+   32 constant CELLBITS
+[then]
+
 \ -----------------------------------------------------------------------------
 \  Tool for compressed instruction set on RV32IMC
 \ -----------------------------------------------------------------------------
 
-
-[ifdef] cj-encoding?
+[ifdef] h, \ Dies existiert nur in RISC-V mit kurzen Befehlen.
 
 0 variable opcode
 
 : rs1   ( -- u ) opcode @ 15 rshift $1F and ;
 : rs2   ( -- u ) opcode @ 20 rshift $1F and ;
 : rd    ( -- u ) opcode @  7 rshift $1F and ;
-: imm-i ( -- n ) opcode @ 20 arshift        ;
-: imm-s ( -- n ) opcode @ $FE000000 and 20 arshift
+
+[ifdef] RV64
+: imm-i ( -- n ) opcode @ 32 lshift 20 32 + arshift ;
+: imm-s ( -- n ) opcode @ 32 lshift 25 32 + arshift 5 lshift
                  opcode @ 7 rshift $1F and or ;
+[else]
+: imm-i ( -- n ) opcode @ 20 arshift        ;
+: imm-s ( -- n ) opcode @ 25 arshift 5 lshift
+                 opcode @ 7 rshift $1F and or ;
+[then]
 
 : c-reg  ( n -- x ) 8 - 1-foldable ;
 : c-reg? ( n -- ? ) dup 8 u>= swap 15 u<= and 1-foldable ;
@@ -113,16 +133,18 @@ compiletoflash
 \ if
 \   $8002 rs1 7 lshift or h, exit \ c.jr
 \ then
-\
-\ opcode @ , exit
-
+\ [ifdef] RV64
+\ opcode @ w, exit
+\ [else]
+\ opcode @  , exit
+\ [then]
 
   \ ADDI4SPN : TODO
 
   opcode @ $0000707F and $00002023 = \ SW
   rs2 c-reg? and
   rs1 c-reg? and
-  imm-s $FFFFFF83 and 0= and \ Passt die Konstante ins Format "65432__" ?
+  imm-s -125 ( $FFFFFF83 ) and 0= and \ Passt die Konstante ins Format "65432__" ?
   if
     $C000 \ c.sw
     rs1 c-reg 7 lshift or
@@ -136,7 +158,7 @@ compiletoflash
   opcode @ $0000707F and $00002003 = \ LW
   rd  c-reg? and
   rs1 c-reg? and
-  imm-i $FFFFFF83 and 0= and \ Passt die Konstante ins Format "65432__" ?
+  imm-i -125 ( $FFFFFF83 ) and 0= and \ Passt die Konstante ins Format "65432__" ?
   if
     $4000 \ c.lw
     rs1 c-reg 7 lshift or
@@ -147,9 +169,39 @@ compiletoflash
     h, exit
   then
 
+  [ifdef] RV64
+
+  opcode @ $0000707F and $00003023 = \ SD
+  rs2 c-reg? and
+  rs1 c-reg? and
+  imm-s -249 ( $FFFFFF07 ) and 0= and \ Passt die Konstante ins Format "76543___" ?
+  if
+    $E000 \ c.sd
+    rs1 c-reg 7 lshift or
+    rs2 c-reg 2 lshift or
+    imm-s %00111000 and 3 rshift 10 lshift or
+    imm-s %11000000 and 6 rshift  5 lshift or
+    h, exit
+  then
+
+  opcode @ $0000707F and $00003003 = \ LD
+  rd  c-reg? and
+  rs1 c-reg? and
+  imm-i -249 ( $FFFFFF07 ) and 0= and \ Passt die Konstante ins Format "76543__" ?
+  if
+    $6000 \ c.ld
+    rs1 c-reg 7 lshift or
+    rd  c-reg 2 lshift or
+    imm-i %00111000 and 3 rshift 10 lshift or
+    imm-i %11000000 and 6 rshift  5 lshift or
+    h, exit
+  then
+
+  [then]
+
   opcode @ $0000707F and $00002023 = \ SW ..., (x2)
   rs1 2 = and
-  imm-s $FFFFFF03 and 0= and \ Passt die Konstante ins Format "765432__" ?
+  imm-s -253 ( $FFFFFF03 ) and 0= and \ Passt die Konstante ins Format "765432__" ?
   if
     $C002
     rs2 2 lshift or
@@ -160,7 +212,7 @@ compiletoflash
 
   opcode @ $0000707F and $00002003 = \ LW ..., (x2)
   rs1 2 = and
-  imm-i $FFFFFF03 and 0= and \ Passt die Konstante ins Format "765432__" ?
+  imm-i -253 ( $FFFFFF03 ) and 0= and \ Passt die Konstante ins Format "765432__" ?
   if
     $4002
     rd  7 lshift or
@@ -170,6 +222,32 @@ compiletoflash
     h, exit
   then
 
+  [ifdef] RV64
+
+  opcode @ $0000707F and $00003023 = \ SD ..., (x2)
+  rs1 2 = and
+  imm-s -505 ( $FFFFFE07 ) and 0= and \ Passt die Konstante ins Format "876543___" ?
+  if
+    $E002
+    rs2 2 lshift or
+    imm-s %000111000 and 3 rshift 10 lshift or
+    imm-s %111000000 and 6 rshift  7 lshift or
+    h, exit
+  then
+
+  opcode @ $0000707F and $00003003 = \ LD ..., (x2)
+  rs1 2 = and
+  imm-i -505 ( $FFFFFF03 ) and 0= and \ Passt die Konstante ins Format "876543___" ?
+  if
+    $6002
+    rd  7 lshift or
+    imm-i %000011000 and 3 rshift  5 lshift or
+    imm-i %000100000 and 5 rshift 12 lshift or
+    imm-i %111000000 and 6 rshift  2 lshift or
+    h, exit
+  then
+
+  [then]
 
   opcode @ $FE00707F and $00001013 = \ SLLI
   rd rs1 = and
@@ -178,6 +256,9 @@ compiletoflash
     $0002
     rd 7 lshift or
     opcode @ 20 rshift $1F and 2 lshift or
+    [ifdef] RV64
+    opcode @ 20 rshift $20 and 6 lshift or  \ Immediate bit 6 --> Opcode bit 12
+    [then]
     h, exit
   then
 
@@ -188,6 +269,9 @@ compiletoflash
     $8001
     rd c-reg 7 lshift or
     opcode @ 20 rshift $1F and 2 lshift or
+    [ifdef] RV64
+    opcode @ 20 rshift $20 and 6 lshift or  \ Immediate bit 6 --> Opcode bit 12
+    [then]
     h, exit
   then
 
@@ -198,13 +282,16 @@ compiletoflash
     $8401
     rd c-reg 7 lshift or
     opcode @ 20 rshift $1F and 2 lshift or
+    [ifdef] RV64
+    opcode @ 20 rshift $20 and 6 lshift or  \ Immediate bit 6 --> Opcode bit 12
+    [then]
     h, exit
   then
 
   opcode @ $0000707F and $00000013 = \ ADDI
   rd rs1 = and \ Sind Quell- und Zielregister identisch ?
   rd 0<> and \ Nicht der Null-Register ?
-  imm-i $FFFFFFE0 and dup $FFFFFFE0 = swap 0= or and \ Passt die Konstante in 6 Bits, inklusive Vorzeichen ?
+  imm-i -32 ( $FFFFFFE0 ) and dup -32 ( $FFFFFFE0 ) = swap 0= or and \ Passt die Konstante in 6 Bits, inklusive Vorzeichen ?
   if
     imm-i 0= if exit then \ Konstante 0 darf nicht opcodiert werden. In dem Fall wird aber auch kein Befehl benötigt.
     $0001
@@ -216,7 +303,7 @@ compiletoflash
   opcode @ $0000707F and $00007013 = \ ANDI
   rd rs1 = and \ Sind Quell- und Zielregister identisch ?
   rd c-reg? and
-  imm-i $FFFFFFE0 and dup $FFFFFFE0 = swap 0= or and \ Passt die Konstante in 6 Bits, inklusive Vorzeichen ?
+  imm-i -32 ( $FFFFFFE0 ) and dup -32 ( $FFFFFFE0 ) = swap 0= or and \ Passt die Konstante in 6 Bits, inklusive Vorzeichen ?
   imm-i 0<> and \ Konstante 0 darf nicht opcodiert werden.
   if
     $8801
@@ -279,12 +366,20 @@ compiletoflash
     $9002 rs1 7 lshift or h, exit \ c.jalr
   then
 
-  opcode @ , \ Normalzustand: Unbekannte Opcodes unverändert schreiben
+  [ifdef] RV64
+  opcode @ w, \ Normalzustand: Unbekannte Opcodes unverändert schreiben
+  [else]
+  opcode @ ,  \ Normalzustand: Unbekannte Opcodes unverändert schreiben
+  [then]
 ;
 
 [else]
 
-: opcode, ( x -- ) , ;
+[ifdef] RV64
+: opcode, ( x -- ) w, ;
+[else]
+: opcode, ( x -- ) ,  ;
+[then]
 
 [then]
 
@@ -388,13 +483,13 @@ ra-size buffer: ra-state
 \   A few handy shortcuts for accessing the state of certain elements
 \ -----------------------------------------------------------------------------
 
-: ->tos ( addr -- addr* ) 0 2* cells + 1-foldable ;
-: ->nos ( addr -- addr* ) 1 2* cells + 1-foldable ;
+  : ->tos ( addr -- addr* ) 0 2* cells + 1-foldable ;
+  : ->nos ( addr -- addr* ) 1 2* cells + 1-foldable ;
 \ : ->3os ( addr -- addr* ) 2 2* cells + 1-foldable ;
 
 : ->d-last ( addr -- addr* ) cached-d-elements 1- 2* cells + 1-foldable ;
 
-: ->tor ( addr -- addr* ) cached-d-elements 0 + 2* cells + 1-foldable ;
+  : ->tor ( addr -- addr* ) cached-d-elements 0 + 2* cells + 1-foldable ;
 \ : ->nor ( addr -- addr* ) cached-d-elements 1 + 2* cells + 1-foldable ;
 \ : ->3or ( addr -- addr* ) cached-d-elements 2 + 2* cells + 1-foldable ;
 
@@ -456,8 +551,13 @@ false variable opcode-store-stack
     $24000000 psp-register >destination-i psp-register >source1 opcode-adjust-stack ! \ addiu $9, $9, 0 Opcode
     $AC000000 psp-register >source1                             opcode-store-stack  ! \ sw $zero, 0000($9) Opcode
   [else]
+    [ifdef] RV64
+    $00000013 psp-register >destination   psp-register >source1 opcode-adjust-stack ! \ addi x9, x9, 0 Opcode
+    $00003023 psp-register >source1                             opcode-store-stack  ! \ sd x0, 0(x9) Opcode
+    [else]
     $00000013 psp-register >destination   psp-register >source1 opcode-adjust-stack ! \ addi x9, x9, 0 Opcode
     $00002023 psp-register >source1                             opcode-store-stack  ! \ sw x0, 0(x9) Opcode
+    [then]
   [then]
 ;
 
@@ -466,8 +566,13 @@ false variable opcode-store-stack
     $24000000 rsp-register >destination-i rsp-register >source1 opcode-adjust-stack ! \ addiu $2, $2, 0 Opcode
     $AC000000 rsp-register >source1                             opcode-store-stack  ! \ sw $zero, 0000($2) Opcode
   [else]
+    [ifdef] RV64
+    $00000013 rsp-register >destination   rsp-register >source1 opcode-adjust-stack ! \ addi x2, x2, 0 Opcode
+    $00003023 rsp-register >source1                             opcode-store-stack  ! \ sd x0, 0(x2) Opcode
+    [else]
     $00000013 rsp-register >destination   rsp-register >source1 opcode-adjust-stack ! \ addi x2, x2, 0 Opcode
     $00002023 rsp-register >source1                             opcode-store-stack  ! \ sw x0, 0(x2) Opcode
+    [then]
   [then]
 ;
 
@@ -584,8 +689,13 @@ false variable opcode-store-stack
           $8C000000 tos-register >destination-i psp-register >source1 opcode, \ lw $8, 0000($9)
           $24000004 psp-register >destination-i psp-register >source1 opcode, \ addiu $9, $9, 0004
         [else]
+          [ifdef] RV64
+          $00003003 tos-register >destination   psp-register >source1 opcode, \ ld     x8, 0 (x9)
+          $00800013 psp-register >destination   psp-register >source1 opcode, \ addi   x9, x9, 8
+          [else]
           $00002003 tos-register >destination   psp-register >source1 opcode, \ lw     x8, 0 (x9)
           $00400013 psp-register >destination   psp-register >source1 opcode, \ addi   x9, x9, 4
+          [then]
         [then]
         canonical-state ->tos @ ra-state ->tos !
 
@@ -696,7 +806,7 @@ $100000 constant flag-acro-only
 \ -----------------------------------------------------------------------------
 
 24 constant maximum-inline-cache-length
-maximum-inline-cache-length 8 * buffer: inline-cache
+maximum-inline-cache-length 2 cells * buffer: inline-cache
 
 0 variable inline-cache-count
 
@@ -716,8 +826,8 @@ maximum-inline-cache-length 8 * buffer: inline-cache
       inline-cache-count @ .
       inline-cache
       maximum-inline-cache-length 0 do
-        dup @ hex. 4 +
-        dup @ hex. 4 +
+        dup @ hex. 1 cells +
+        dup @ hex. 1 cells +
         cr
       loop
       drop cr cr
@@ -762,8 +872,8 @@ maximum-inline-cache-length 8 * buffer: inline-cache
   inline-cache
   inline-cache-count @ dup ,
   0 do
-    dup @ , 4 +
-    dup @ , 4 +
+    dup @ , 1 cells +
+    dup @ , 1 cells +
   loop
   drop
 ;
@@ -774,8 +884,8 @@ maximum-inline-cache-length 8 * buffer: inline-cache
   inline-cache-count @ current-inline-cache-length @ u<
   if
     \ ." +Ca "
-    ( dup hex. ) inline-cache-count @ 8 * 4 + inline-cache + !
-    ( dup hex. ) inline-cache-count @ 8 *     inline-cache + !
+    ( dup hex. ) inline-cache-count @ 2 cells * 1 cells + inline-cache + !
+    ( dup hex. ) inline-cache-count @ 2 cells *           inline-cache + !
 
   else
     \ ." xCA "
@@ -816,8 +926,13 @@ maximum-inline-cache-length 8 * buffer: inline-cache
       $8C000000         swap >destination-i rsp-register >source1 opcode, \ lw $0, 0000($2)
       $24000004 rsp-register >destination-i rsp-register >source1 opcode, \ addiu $2, $2, 0004
     [else]
+      [ifdef] RV64
+      $00003003         swap >destination   rsp-register >source1 opcode, \ ld     x0, 0 (x2)
+      $00800013 rsp-register >destination   rsp-register >source1 opcode, \ addi   x2, x2, 8
+      [else]
       $00002003         swap >destination   rsp-register >source1 opcode, \ lw     x0, 0 (x2)
       $00400013 rsp-register >destination   rsp-register >source1 opcode, \ addi   x2, x2, 4
+      [then]
     [then]
   then
 ;
@@ -831,8 +946,13 @@ maximum-inline-cache-length 8 * buffer: inline-cache
       $8C000000         swap >destination-i psp-register >source1 opcode, \ lw $0, 0000($9)
       $24000004 psp-register >destination-i psp-register >source1 opcode, \ addiu $9, $9, 0004
     [else]
+      [ifdef] RV64
+      $00003003         swap >destination   psp-register >source1 opcode, \ ld     x0, 0 (x9)
+      $00800013 psp-register >destination   psp-register >source1 opcode, \ addi   x9, x9, 8
+      [else]
       $00002003         swap >destination   psp-register >source1 opcode, \ lw     x0, 0 (x9)
       $00400013 psp-register >destination   psp-register >source1 opcode, \ addi   x9, x9, 4
+      [then]
     [then]
   then
 ;
@@ -848,7 +968,11 @@ maximum-inline-cache-length 8 * buffer: inline-cache
     [ifdef] mips
       $8C000000         swap >destination-i psp-register >source1 opcode, \ lw $0, 0000($9)
     [else]
+      [ifdef] RV64
+      $00003003         swap >destination   psp-register >source1 opcode, \ ld   x0, 0 (x9)
+      [else]
       $00002003         swap >destination   psp-register >source1 opcode, \ lw   x0, 0 (x9)
+      [then]
     [then]
 
     get-free-register
@@ -857,8 +981,13 @@ maximum-inline-cache-length 8 * buffer: inline-cache
       $8C000004         swap >destination-i psp-register >source1 opcode, \ lw $0, 0004($9)
       $24000008 psp-register >destination-i psp-register >source1 opcode, \ addiu $9, $9, 0008
     [else]
+      [ifdef] RV64
+      $00803003         swap >destination   psp-register >source1 opcode, \ ld     x0, 8 (x9)
+      $01000013 psp-register >destination   psp-register >source1 opcode, \ addi   x9, x9, 16
+      [else]
       $00402003         swap >destination   psp-register >source1 opcode, \ lw     x0, 4 (x9)
       $00800013 psp-register >destination   psp-register >source1 opcode, \ addi   x9, x9, 8
+      [then]
     [then]
 
   else \ TOS ist belegt, aber NOS muss vielleicht nachgeladen werden.
@@ -871,8 +1000,13 @@ maximum-inline-cache-length 8 * buffer: inline-cache
         $8C000000         swap >destination-i psp-register >source1 opcode, \ lw $0, 0000($9)
         $24000004 psp-register >destination-i psp-register >source1 opcode, \ addiu $9, $9, 0004
       [else]
+        [ifdef] RV64
+        $00003003         swap >destination   psp-register >source1 opcode, \ ld     x0, 0 (x9)
+        $00800013 psp-register >destination   psp-register >source1 opcode, \ addi   x9, x9, 8
+        [else]
         $00002003         swap >destination   psp-register >source1 opcode, \ lw     x0, 0 (x9)
         $00400013 psp-register >destination   psp-register >source1 opcode, \ addi   x9, x9, 4
+        [then]
       [then]
     then
 
@@ -918,8 +1052,13 @@ maximum-inline-cache-length 8 * buffer: inline-cache
     $2400FFFC  rsp-register >destination-i rsp-register >source1 opcode, \ addiu $2, $2, FFFC
     $AC000000 link-register >destination-i rsp-register >source1 opcode, \ sw $31, 0000($2)
   [else]
+    [ifdef] RV64
+    $FF800013  rsp-register >destination   rsp-register >source1 opcode, \ addi   x2, x2, -8
+    $00003023 link-register >source2       rsp-register >source1 opcode, \ sd     x1, 0 (x2)
+    [else]
     $FFC00013  rsp-register >destination   rsp-register >source1 opcode, \ addi   x2, x2, -4
     $00002023 link-register >source2       rsp-register >source1 opcode, \ sw     x1, 0 (x2)
+    [then]
   [then]
 
   flag-allocator setflags
@@ -965,7 +1104,7 @@ immediate noframe ;
 
   : tos12bitliteral? ( -- x true | false )
 
-     ra-state ->tos cell+ @ $FFFFF800 and dup $FFFFF800 = swap 0= or
+     ra-state ->tos cell+ @ -2048 ( $FFFFF800 ) and dup -2048 ( $FFFFF800 ) = swap 0= or
      ra-state ->tos @ state-literal =
      and
      if
@@ -1080,6 +1219,9 @@ immediate noframe ;
 
     if
       ( Konstante ) 20 lshift
+      [ifdef] RV64
+      $FFFFFFFF and
+      [then]
       rdrop r> or
     else
       ra-state ->tos expect-element-in-register
@@ -1236,7 +1378,7 @@ immediate noframe ;
 
     ra-state ->tos @ state-literal =
     if
-      $1F not ra-state ->tos cell+ bic!  \ Maximale Schubweite von 31 maskieren.
+      SHIFTMASK not ra-state ->tos cell+ bic!  \ Maximale Schubweite von 31 maskieren.
     then
 
     ra-state ->tos       @ state-literal =
@@ -1288,6 +1430,21 @@ immediate noframe ;
   then
 ;
 
+[ifdef] RV64
+
+: li-temporary ( literal -- )
+
+  dup temporary-inhalt @ = temporary-bekannt @ and
+  if
+    drop
+  else
+    dup temporary-inhalt ! true temporary-bekannt !
+    temporary-register-for-acrobatics registerliteral,
+  then
+;
+
+[then]
+
 : ra-speicherlesen ( Opcode )
   expect-one-element
 
@@ -1300,6 +1457,21 @@ immediate noframe ;
     else \ Langes Literal, passt nicht in den Opcode hinein. Kann aber jede Adresse mit zwei Opcodes laden.
 
       ra-state ->tos cell+ @
+
+      [ifdef] RV64
+        \ Probe ob das Literal über die Zwei-Opcode-Grenzen hinausragt:
+        ( addr )
+        dup $FFFFFFFF80000000 and
+          dup $FFFFFFFF80000000 = swap 0= or
+        not
+        if
+          \ Passt nicht. Muss das Literal separat laden.
+          li-temporary
+          0 \ Das Immediate im folgenden Opcode muss Null sein.
+
+        else
+      [then]
+
       [ifdef] mips
         dup $8000 and if $10000 + then \ Korrektur fürs negative Vorzeichen bei der Addition
       [else]
@@ -1308,6 +1480,10 @@ immediate noframe ;
       ( Opcode Literal* )
 
       dup lui-temporary \ Lui-Opcode generieren
+
+      [ifdef] RV64
+        then
+      [then]
 
       >imm-i \ Konstante für den Lade-Opcode einpflegen
       temporary-register-for-acrobatics >source1 \ und den im LUI-Opcode verwendeten Register einfügen.
@@ -1348,6 +1524,21 @@ immediate noframe ;
     else \ Langes Literal, passt nicht in den Opcode hinein. Kann aber jede Adresse mit zwei Opcodes beschreiben.
 
       ra-state ->tos cell+ @
+
+      [ifdef] RV64
+        \ Probe ob das Literal über die Zwei-Opcode-Grenzen hinausragt:
+        ( addr )
+        dup $FFFFFFFF80000000 and
+          dup $FFFFFFFF80000000 = swap 0= or
+        not
+        if
+          \ Passt nicht. Muss das Literal separat laden.
+          li-temporary
+          0 \ Das Immediate im folgenden Opcode muss Null sein.
+
+        else
+      [then]
+
       [ifdef] mips
         dup $8000 and if $10000 + then \ Korrektur fürs negative Vorzeichen bei der Addition
       [else]
@@ -1356,6 +1547,10 @@ immediate noframe ;
       ( Opcode Literal* )
 
       dup lui-temporary \ Lui-Opcode generieren
+
+      [ifdef] RV64
+        then
+      [then]
 
       >imm-store \ Konstante für den Schreib-Opcode einpflegen
       temporary-register-for-acrobatics >source1 \ und den im LUI-Opcode verwendeten Register einfügen.
@@ -1401,7 +1596,11 @@ allocator:
     [ifdef] mips
       $24000004 psp-register >destination-i psp-register >source1 opcode, \ addiu $9, $9, 0004
     [else]
+      [ifdef] RV64
+      $00800013 psp-register >destination   psp-register >source1 opcode, \ addi x9, x9, 8
+      [else]
       $00400013 psp-register >destination   psp-register >source1 opcode, \ addi x9, x9, 4
+      [then]
     [then]
   else
     eliminiere-tos
@@ -1416,7 +1615,11 @@ allocator:
     [ifdef] mips
       $24000004 rsp-register >destination-i rsp-register >source1 opcode, \ addiu $2, $2, 0004
     [else]
+      [ifdef] RV64
+      $00800013 rsp-register >destination   rsp-register >source1 opcode, \ addi x2, x2, 8
+      [else]
       $00400013 rsp-register >destination   rsp-register >source1 opcode, \ addi x2, x2, 4
+      [then]
     [then]
   else
     eliminiere-tor
@@ -1510,7 +1713,12 @@ true variable constantfoldingpointer
 
 \ -----------------------------------------------------------------------------
 
+[ifdef] RV64
+: unalignedw@ ( addr -- x ) dup          h@ swap 2+           h@ 16 lshift or ; \ 2-even access to the inline cache
+: unaligned@  ( addr -- x ) dup unalignedw@ swap 4 + unalignedw@ 32 lshift or ;
+[else]
 : unaligned@ ( addr -- x ) dup h@ swap 2+ h@ 16 lshift or ; \ 2-even access to the inline cache
+[then]
 
 : kompilator ( addr flags -- )
 
@@ -1519,13 +1727,13 @@ true variable constantfoldingpointer
     drop ( addr ) skipdefinition
 
           dup unaligned@ ( Cache-Start Zahl-der-Elemente )
-          swap 4 + swap
+          swap 1 cells + swap
           0 do
             >r
-            r@     unaligned@   \ Addr
-            r@ 4 + unaligned@   \ Flags
+            r@           unaligned@   \ Addr
+            r@ 1 cells + unaligned@   \ Flags
             recurse
-            r> 8 +
+            r> 2 cells +
           loop
           drop
 
@@ -1649,16 +1857,16 @@ true variable constantfoldingpointer
   begin
     ( Code-Addr Flags Dictionary-Chain R: addr len )
 
-    dup 4 + @ flag-invisible <>
+    dup 1 cells + @ flag-invisible <>
     if
-    dup 4 + @ flag-allocator flag-acro-only or and 0=
+    dup 1 cells + @ flag-allocator flag-acro-only or and 0=
     if
 
-      dup 8 + count 2r@ compare
+      dup 2 cells + count 2r@ compare
       if
         -rot 2drop
-        dup 8 + skipstring
-        over 4 + @ \ Flags
+        dup 2 cells + skipstring
+        over 1 cells + @ \ Flags
         rot
 
         dup addrinram? if drop 2rdrop exit then
@@ -1727,13 +1935,24 @@ true variable constantfoldingpointer
 
   : c@signed ( addr  -- x )  c@signed inline            acro-only allocator: $00000003           ra-speicherlesen            ; \ lb x0, 0(x0)
   : h@signed ( addr  -- x )  h@signed inline            acro-only allocator: $00001003           ra-speicherlesen            ; \ lh x0, 0(x0)
+  [ifdef] RV64
+  : w@signed ( addr  -- x )  w@signed inline            acro-only allocator: $00002003           ra-speicherlesen            ; \ lw x0, 0(x0)
+  : w@       ( addr  -- x )  w@       inline            acro-only allocator: $00006003           ra-speicherlesen            ; \ lwu x0, 0(x0)
+  : @        ( addr  -- x )   @       inline            acro-only allocator: $00003003           ra-speicherlesen            ; \ ld x0, 0(x0)
+  [else]
   :  @       ( addr  -- x )   @       inline            acro-only allocator: $00002003           ra-speicherlesen            ; \ lw x0, 0(x0)
+  [then]
   : c@       ( addr  -- x )  c@       inline            acro-only allocator: $00004003           ra-speicherlesen            ; \ lbu x0, 0(x0)
   : h@       ( addr  -- x )  h@       inline            acro-only allocator: $00005003           ra-speicherlesen            ; \ lhu x0, 0(x0)
 
   : c!       ( x addr --  )  c!       inline            acro-only allocator: $00000023           ra-speicherschreiben        ; \ sb x0, 0(x0)
   : h!       ( x addr --  )  h!       inline            acro-only allocator: $00001023           ra-speicherschreiben        ; \ sh x0, 0(x0)
+  [ifdef] RV64
+  : w!       ( x addr --  )  w!       inline            acro-only allocator: $00002023           ra-speicherschreiben        ; \ sw x0, 0(x0)
+  :  !       ( x addr --  )   !       inline            acro-only allocator: $00003023           ra-speicherschreiben        ; \ sd x0, 0(x0)
+  [else]
   :  !       ( x addr --  )   !       inline            acro-only allocator: $00002023           ra-speicherschreiben        ; \ sw x0, 0(x0)
+  [then]
 
   : *        ( x1 x2 -- x )   *        inline 2-foldable acro-only allocator: $02000033          ra-rechenlogik-muldiv       ; \ mul    x0, x0, x0
   : mulh     ( x1 x2 -- x )  m* nip    inline 2-foldable acro-only allocator: $02001033          ra-rechenlogik-muldiv       ; \ mulh   x0, x0, x0
@@ -1871,6 +2090,7 @@ acro-on
            :       , ( x -- ) tidyup-ra       , acro-only ;
            : opcode, ( x -- ) tidyup-ra opcode, acro-only ;
 [ifdef] h, :      h, ( x -- ) tidyup-ra      h, acro-only ; [then]
+[ifdef] w, :      w, ( x -- ) tidyup-ra      w, acro-only ; [then]
 
 \ -----------------------------------------------------------------------------
 \   Jetzt werden viele kleine Kerndefinitionen noch einmal aus den Allokator-
@@ -1897,7 +2117,7 @@ maximum-inlining \ Volldampf voraus für die kommenden grundlegenden Definitione
 
 : 0=     ( x -- ? )         1 sltu 0 swap -    inline 1-foldable acro-only ;
 : 0<>    ( x -- ? )         1 sltu -1 +        inline 1-foldable acro-only ;
-: 0<     ( x -- ? )         31 arshift         inline 1-foldable acro-only ;
+: 0<     ( x -- ? )  SIGNSHIFT arshift         inline 1-foldable acro-only ;
 
 : over  ( x1 x2 -- x1 x2 x1 )    >r dup r> swap  inline 2-foldable acro-only ;
 : tuck  ( x1 x2 -- x2 x1 x2 )    swap over       inline 2-foldable acro-only ;
@@ -1911,22 +2131,22 @@ maximum-inlining \ Volldampf voraus für die kommenden grundlegenden Definitione
 : 1-     ( x -- x-1 )  1 -        inline 1-foldable acro-only ;
 : 2+     ( x -- x+2 )  2 +        inline 1-foldable acro-only ;
 : 2-     ( x -- x-2 )  2 -        inline 1-foldable acro-only ;
-: cell+  ( x -- x+4 )  4 +        inline 1-foldable acro-only ;
+: cell+  ( x -- x+4 )  1 cells +  inline 1-foldable acro-only ;
 : negate ( x -- -x )   0 swap -   inline 1-foldable acro-only ;
 : not    ( x -- ~x )  -1 xor      inline 1-foldable acro-only ;
 : invert ( x -- ~x )  -1 xor      inline 1-foldable acro-only ;
 
-: shr    ( x1 -- x2 )  1  rshift  inline 1-foldable acro-only ;
-: shl    ( x1 -- x2 )  1  lshift  inline 1-foldable acro-only ;
-: 2*     ( x1 -- x2 )  1  lshift  inline 1-foldable acro-only ;
-: 2/     ( x1 -- x2 )  1 arshift  inline 1-foldable acro-only ;
-: cells  ( x1 -- x2 )  2  lshift  inline 1-foldable acro-only ;
+: shr    ( x1 -- x2 )         1  rshift  inline 1-foldable acro-only ;
+: shl    ( x1 -- x2 )         1  lshift  inline 1-foldable acro-only ;
+: 2*     ( x1 -- x2 )         1  lshift  inline 1-foldable acro-only ;
+: 2/     ( x1 -- x2 )         1 arshift  inline 1-foldable acro-only ;
+: cells  ( x1 -- x2 ) CELLSHIFT  lshift  inline 1-foldable acro-only ;
 
-: ror    ( x1 -- x2 ) dup 31 lshift swap 1 rshift or  inline 1-foldable acro-only ;
-: rol    ( x1 -- x2 ) dup 31 rshift swap 1 lshift or  inline 1-foldable acro-only ;
+: ror    ( x1 -- x2 ) dup SIGNSHIFT lshift swap 1 rshift or  inline 1-foldable acro-only ;
+: rol    ( x1 -- x2 ) dup SIGNSHIFT rshift swap 1 lshift or  inline 1-foldable acro-only ;
+: abs   ( n -- u )    dup SIGNSHIFT arshift dup >r + r> xor  inline 1-foldable acro-only ;
 
-: abs   ( n -- u ) dup 31 arshift dup >r + r> xor  inline 1-foldable acro-only ;
-: bic   ( x1 x2 -- x3 ) not and                    inline 2-foldable acro-only ;
+: bic   ( x1 x2 -- x3 ) not and  inline 2-foldable acro-only ;
 
 [ifndef] mips
 
@@ -1962,6 +2182,18 @@ maximum-inlining \ Volldampf voraus für die kommenden grundlegenden Definitione
 : hbit@ ( mask addr -- ? ) h@ and 0<> acro-only ;
 : cbit@ ( mask addr -- ? ) c@ and 0<> acro-only ;
 
+[ifdef] RV64
+
+: w+!   ( mask addr -- ) dup >r w@ +   r> w! acro-only ;
+
+: wbis! ( mask addr -- ) dup >r w@      or  r> w! acro-only ;
+: wbic! ( mask addr -- ) dup >r w@ swap bic r> w! acro-only ;
+: wxor! ( mask addr -- ) dup >r w@      xor r> w! acro-only ;
+
+: wbit@ ( mask addr -- ? ) w@ and 0<> acro-only ;
+
+[then]
+
 \ -----------------------------------------------------------------------------
 
 : 2dup  ( x1 x2 -- x1 x2 x1 x2 )             over over               2-foldable acro-only ;
@@ -1984,10 +2216,10 @@ maximum-inlining \ Volldampf voraus für die kommenden grundlegenden Definitione
 : d=    ( d1 d2 -- ? ) ( x1 x2 x3 x4 -- ? ) rot xor ( x1 x3 x ) >r xor r> or 0=  4-foldable acro-only ;
 : d<>   ( d1 d2 -- ? ) ( x1 x2 x3 x4 -- ? ) rot xor ( x1 x3 x ) >r xor r> or 0<> 4-foldable acro-only ;
 
-: dshl  ( x1 x2 -- x1' x2' ) swap dup 31 rshift >r 1  lshift swap 1 lshift r> or       2-foldable acro-only ;
-: d2*   ( x1 x2 -- x1' x2' ) swap dup 31 rshift >r 1  lshift swap 1 lshift r> or       2-foldable acro-only ;
-: d2/   ( x1 x2 -- x1' x2' )      dup 31 lshift >r 1 arshift swap 1 rshift r> or swap  2-foldable acro-only ;
-: dshr  ( x1 x2 -- x1' x2' )      dup 31 lshift >r 1  rshift swap 1 rshift r> or swap  2-foldable acro-only ;
+: dshl  ( x1 x2 -- x1' x2' ) swap dup SIGNSHIFT rshift >r 1  lshift swap 1 lshift r> or       2-foldable acro-only ;
+: d2*   ( x1 x2 -- x1' x2' ) swap dup SIGNSHIFT rshift >r 1  lshift swap 1 lshift r> or       2-foldable acro-only ;
+: d2/   ( x1 x2 -- x1' x2' )      dup SIGNSHIFT lshift >r 1 arshift swap 1 rshift r> or swap  2-foldable acro-only ;
+: dshr  ( x1 x2 -- x1' x2' )      dup SIGNSHIFT lshift >r 1  rshift swap 1 rshift r> or swap  2-foldable acro-only ;
 
 \ -----------------------------------------------------------------------------
 \  Ganz schön komplizierte Kopfverrenkung !
@@ -3037,9 +3269,9 @@ numbertable exp-coef
   swap addrinflash? or           \ or in flash ?
 ;
 
-: link>flags ( addr -- addr* ) 4 + ;
-: link>name  ( addr -- addr* ) 8 + ;
-: link>code  ( addr -- addr* ) 8 + skipstring ;
+: link>flags ( addr -- addr* ) 1 cells + ;
+: link>name  ( addr -- addr* ) 2 cells + ;
+: link>code  ( addr -- addr* ) 2 cells + skipstring ;
 
 0 variable searching-for
 0 variable closest-found

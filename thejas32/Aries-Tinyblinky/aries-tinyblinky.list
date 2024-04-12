@@ -1,0 +1,57 @@
+
+aries-tinyblinky.elf:     file format elf32-littleriscv
+
+
+Disassembly of section .text:
+
+00200000 <Reset>:
+  200000:	10180437          	lui	x8,0x10180
+  200004:	70040413          	add	x8,x8,1792 # 10180700 <GPIO1_DATA+0x700>
+  200008:	fff00793          	li	x15,-1
+  20000c:	00f42023          	sw	x15,0(x8)
+  200010:	101c0737          	lui	x14,0x101c0
+  200014:	1c000793          	li	x15,448
+  200018:	00f72023          	sw	x15,0(x14) # 101c0000 <GPIO1_DIR>
+  20001c:	00100513          	li	x10,1
+  200020:	01351593          	sll	x11,x10,0x13
+
+00200024 <breathe_led>:
+  200024:	41155613          	sra	x12,x10,0x11
+  200028:	40c585b3          	sub	x11,x11,x12
+  20002c:	4115d613          	sra	x12,x11,0x11
+  200030:	00c50533          	add	x10,x10,x12
+  200034:	40e5d613          	sra	x12,x11,0xe
+  200038:	0b460613          	add	x12,x12,180
+  20003c:	00767693          	and	x13,x12,7
+  200040:	00868693          	add	x13,x13,8
+  200044:	00365613          	srl	x12,x12,0x3
+  200048:	00c696b3          	sll	x13,x13,x12
+  20004c:	05500793          	li	x15,85
+  200050:	fff78793          	add	x15,x15,-1
+  200054:	00d484b3          	add	x9,x9,x13
+  200058:	00d4b733          	sltu	x14,x9,x13
+  20005c:	fff70713          	add	x14,x14,-1
+  200060:	00e42023          	sw	x14,0(x8)
+  200064:	fe0796e3          	bnez	x15,200050 <breathe_led+0x2c>
+  200068:	fbdff06f          	j	200024 <breathe_led>
+
+Disassembly of section .riscv.attributes:
+
+00000000 <.riscv.attributes>:
+   0:	2741                	.2byte	0x2741
+   2:	0000                	.2byte	0x0
+   4:	7200                	.2byte	0x7200
+   6:	7369                	.2byte	0x7369
+   8:	01007663          	bgeu	x0,x16,14 <Reset-0x1fffec>
+   c:	001d                	.2byte	0x1d
+   e:	0000                	.2byte	0x0
+  10:	7205                	.2byte	0x7205
+  12:	3376                	.2byte	0x3376
+  14:	6932                	.2byte	0x6932
+  16:	7032                	.2byte	0x7032
+  18:	5f30                	.2byte	0x5f30
+  1a:	326d                	.2byte	0x326d
+  1c:	3070                	.2byte	0x3070
+  1e:	7a5f 6d6d 6c75      	.byte	0x5f, 0x7a, 0x6d, 0x6d, 0x75, 0x6c
+  24:	7031                	.2byte	0x7031
+  26:	0030                	.2byte	0x30

@@ -46,11 +46,11 @@ hexdot: # ( u -- ) Print an unsigned number in Base 16, independent of number su
 
   push_x1_x10_x12
 
-  popda x10   # Value to print
-  li x11, 32  # Number of bits left
+  popda x10         # Value to print
+  li x11, CELLBITS  # Number of bits left
 
 1:pushdatos
-  srli x8, x10, 28
+  srli x8, x10, CELLBITS-4
   andi x8, x8, 0xF
   li x12, 10
 
@@ -78,7 +78,7 @@ hexdot: # ( u -- ) Print an unsigned number in Base 16, independent of number su
   laf x15, returnstackanfang # Anfang laden
   sub x15, x15, sp # und aktuellen Stackpointer abziehen
   blt x15, zero, 2f # Stack underflow ? Do not print a zillion of locations.
-  srli x11, x15, 2 # Durch 4 teilen  Divide by 4 Bytes/Element
+  srli x11, x15, CELLSHIFT
   addi x11, x11, 1 # Ein Element mehr anzeigen
 
   pushda x11
@@ -91,10 +91,10 @@ hexdot: # ( u -- ) Print an unsigned number in Base 16, independent of number su
 
 1: # Hole das Stackelement !  Fetch stack element directly
    pushdatos
-   lw x8, 0(x10)
+   lc x8, 0(x10)
    call hexdot
 
-   addi x10, x10, -4
+   addi x10, x10, -CELL
    addi x11, x11, -1
    bne x11, zero, 1b
 
@@ -121,25 +121,25 @@ words: # Malt den Dictionaryinhalt
   # Link
   write "Link: "
   dup
-  lw x8, 0(x8)
+  lc x8, 0(x8)
   call hexdot
 
   # Flagfeld
   write "Flags: "
   dup
-  lw x8, 4(x8)
+  lc x8, CELL(x8)
   call hexdot
 
   # Einsprungadresse
   write "Code: "
   dup
-  addi x8, x8, 8
+  addi x8, x8, 2*CELL
   call skipstring
   call hexdot
 
   write "Name: "
   dup
-  addi x8, x8, 8
+  addi x8, x8, 2*CELL
   call ctype
 
   writeln ""
@@ -198,40 +198,43 @@ unused_common:
   write "Stack: [ "
 
   laf x14, base
-  lw x13, 0(x14)
+  lc x13, 0(x14)
   li x15, 10
-  sw x15, 0(x14)
+  sc x15, 0(x14)
 
   # Berechne den Stackfüllstand  Calculate number of elements on datastack
   laf x11, datenstackanfang # Anfang laden
   sub x11, x11, x9 # und aktuellen Stackpointer abziehen
   blt x11, zero, 2f # Stack underflow ? Do not print a zillion of locations.
-  srli x11, x11, 2 # Durch 4 teilen  Divide by 4 Bytes/Element
+  srli x11, x11, CELLSHIFT
 
   pushda x11
   call dot
   write "] "
 
   laf x14, base
-  sw x13, 0(x14)
+  sc x13, 0(x14)
 
   blt x11, zero, 2f # Stack underflow ? Do not print a zillion of locations.
 
   beq x11, zero, 2f # Bei einem leeren Stack ist nichts auszugeben.  Don't print elements for an empty stack
 
-  laf x12, datenstackanfang - 4 # Anfang laden, wo ich beginne:  Start here !
+  laf x12, datenstackanfang - CELL # Anfang laden, wo ich beginne:  Start here !
 
 1: # Hole das Stackelement !  Fetch stack element directly
    pushdatos
-   lw x8, 0(x12)
+   lc x8, 0(x12)
 
+  .ifdef thejas32_pipeline_bug
+  fence
+  .endif
   .ifdef mipscore
     jalr x1, x10
   .else
     jalr x1, x10, 0
   .endif
 
-   addi x12, x12, -4
+   addi x12, x12, -CELL
    addi x11, x11, -1
    bne x11, zero, 1b
 
@@ -239,6 +242,9 @@ unused_common:
    write " TOS: "
    pushda x8
 
+  .ifdef thejas32_pipeline_bug
+  fence
+  .endif
   .ifdef mipscore
     jalr x1, x10
   .else
@@ -265,7 +271,7 @@ dots:
   laf x11, datenstackanfang # Anfang laden
   sub x11, x11, x9 # und aktuellen Stackpointer abziehen
   blt x11, zero, 2f # Stack underflow ? Do not print a zillion of locations.
-  srli x11, x11, 2 # Durch 4 teilen  Divide by 4 Bytes/Element
+  srli x11, x11, CELLSHIFT
 
   pushda x11
   call hexdot
@@ -273,14 +279,14 @@ dots:
 
   beq x11, zero, 2f # Bei einem leeren Stack ist nichts auszugeben.  Don't print elements for an empty stack
 
-  laf x10, datenstackanfang - 4 # Anfang laden, wo ich beginne:  Start here !
+  laf x10, datenstackanfang - CELL # Anfang laden, wo ich beginne:  Start here !
 
 1: # Hole das Stackelement !  Fetch stack element directly
    pushdatos
-   lw x8, 0(x10)
+   lc x8, 0(x10)
    call hexdot
 
-   addi x10, x10, -4
+   addi x10, x10, -CELL
    addi x11, x11, -1
    bne x11, zero, 1b
 
@@ -315,7 +321,7 @@ dump: # ( addr len -- )
   addi x8, x8, 2
   .else
   pushdatos
-  lw x8, 0(x8)
+  lwu x8, 0(x8)
   call hexdot
   writeln ""
   addi x8, x8, 4

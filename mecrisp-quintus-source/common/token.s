@@ -38,7 +38,7 @@ parse:
   #popda x10  # Pointer to input buffer
 
   call source_in # Current >IN gauge
-  lw x12, 0(x8)
+  lc x12, 0(x8)
   drop
 
   add x14, x10, x12 # Start address of parsed string
@@ -73,12 +73,12 @@ parse:
   sub x8, x8, x14
 
 4:# Store start address
-  addi x9, x9, -4
-  sw x14, 0(x9)
+  addi x9, x9, -CELL
+  sc x14, 0(x9)
 
   # Store new >IN
   call source_in # Current >IN gauge
-  sw x12, 0(x8)  # Fresh >IN gauge
+  sc x12, 0(x8)  # Fresh >IN gauge
   drop
 
   pop_x1_x10_x12

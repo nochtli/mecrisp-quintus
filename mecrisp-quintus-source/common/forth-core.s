@@ -35,17 +35,29 @@
     .equ erasedbyte, 0
     .equ erasedhalfword, 0
     .equ erasedword, 0
+    .equ eraseddword, 0
 
     .equ writtenhalfword, 0xFFFF
-    .equ writtenword, 0xFFFFFFFF
+    .equ writtenword,     0xFFFFFFFF
+    .equ writtendword,    0xFFFFFFFFFFFFFFFF
   .else
     .equ erasedbyte,     0xFF
     .equ erasedhalfword, 0xFFFF
     .equ erasedword,     0xFFFFFFFF
+    .equ eraseddword,    0xFFFFFFFFFFFFFFFF
 
     .equ writtenhalfword, 0
     .equ writtenword, 0
+    .equ writtendword, 0
   .endif
+.endif
+
+.ifdef RV64
+  .equ writtencell, writtendword
+  .equ erasedcell,  eraseddword
+.else
+  .equ writtencell, writtenword
+  .equ erasedcell,  erasedword
 .endif
 
 # -----------------------------------------------------------------------------
@@ -53,11 +65,16 @@
 # -----------------------------------------------------------------------------
 
 .macro Definition Flags, Name
-    .balign 4, 0
-    .equ Dictionary_\@, .  # Labels for a more readable assembler listing only
+    .balign CELL, 0
+    .equ "Dictionary_\Name", .  # Labels for a more readable assembler listing only
 
+    .ifdef RV64
+9:  .dword 9f         # Insert Link
+    .dword \Flags     # Flag field
+    .else
 9:  .word 9f          # Insert Link
     .word \Flags      # Flag field
+    .endif
 
     .byte 8f - 7f     # Calculate length of name field
 7:  .ascii "\Name"    # Insert name string
@@ -68,13 +85,18 @@
 8:  .balign 4, 0      # Realign
 .endif
 
-    .equ Code_\@, .        # Labels for a more readable assembler listing only
+    .equ "Code_\Name", .        # Labels for a more readable assembler listing only
 .endm
 
 
 .macro Definition_EndOfCore Flags, Name
-    .balign 4, 0
-    .equ Dictionary_\@, .  # Labels for a more readable assembler listing only
+    .balign CELL, 0
+    .equ "Dictionary_\Name", .  # Labels for a more readable assembler listing only
+
+    .ifdef RV64
+9:  .dword FlashDictionaryAnfang
+    .dword \Flags
+    .else
 
      .ifdef flash8bytesblockwrite
 9:      .word FlashDictionaryAnfang + 0x04 # Insert Link with offset because of alignment issues.
@@ -83,6 +105,7 @@
      .endif
 
     .word \Flags      # Flag field
+    .endif
 
     .byte 8f - 7f     # Calculate length of name field
 7:  .ascii "\Name"    # Insert name string
@@ -93,15 +116,15 @@
 8:  .balign 4, 0      # Realign
 .endif
 
-    .equ Code_\@, .        # Labels for a more readable assembler listing only
+    .equ "Code_\Name", .        # Labels for a more readable assembler listing only
 .endm
 
 .ifdef erasedflashcontainszero
-  .equ Flag_invisible,  0x00000000  # Erased Flash needs to give invisible Flags.
-  .equ Flag_visible,    0x80000000
+  .equ Flag_invisible,  0              # Erased Flash needs to give invisible Flags.
+  .equ Flag_visible,    1 << SIGNSHIFT # 0x80000000
 .else
-  .equ Flag_invisible,  0xFFFFFFFF
-  .equ Flag_visible,    0x00000000
+  .equ Flag_invisible, -1
+  .equ Flag_visible,    0
 .endif
 
 
@@ -145,12 +168,12 @@
 # For initialised variables at the end of RAM-Dictioanary that are recognized by catchflashpointers
 
 .macro CoreVariable, Name #  Benutze den Mechanismus, um initialisierte Variablen zu erhalten.
-  .set CoreVariablenPointer, CoreVariablenPointer - 4
+  .set CoreVariablenPointer, CoreVariablenPointer - CELL
   .equ \Name, CoreVariablenPointer
 .endm
 
 .macro DoubleCoreVariable, Name #  Benutze den Mechanismus, um initialisierte Variablen zu erhalten.
-  .set CoreVariablenPointer, CoreVariablenPointer - 8
+  .set CoreVariablenPointer, CoreVariablenPointer - 2*CELL
   .equ \Name, CoreVariablenPointer
 .endm
 
@@ -169,30 +192,30 @@
 # Variablen des Kerns  Variables of core that are not visible
 # Variablen für das Flashdictionary  Variables for Flash management
 
-ramallot Dictionarypointer, 4        # These five variables need to be exactly in this order in memory.
-ramallot ZweitDictionaryPointer, 4   # Dictionarypointer +  4
-ramallot Fadenende, 4                # Dictionarypointer +  8
-ramallot ZweitFadenende, 4           # Dictionarypointer + 12
-ramallot VariablenPointer, 4         # Dictionarypointer + 16
+ramallot Dictionarypointer, CELL        # These five variables need to be exactly in this order in memory.
+ramallot ZweitDictionaryPointer, CELL   # Dictionarypointer +  4
+ramallot Fadenende, CELL                # Dictionarypointer +  8
+ramallot ZweitFadenende, CELL           # Dictionarypointer + 12
+ramallot VariablenPointer, CELL         # Dictionarypointer + 16
 
-ramallot konstantenfaltungszeiger, 4
-ramallot leavepointer, 4
-ramallot Einsprungpunkt, 4
+ramallot konstantenfaltungszeiger, CELL
+ramallot leavepointer, CELL
+ramallot Einsprungpunkt, CELL
 
-ramallot FlashFlags, 4
+ramallot FlashFlags, CELL
 
 .ifdef within_os # Specials for Linux targets
-  ramallot arguments, 4
+  ramallot arguments, CELL
 .endif
 
-.equ Zahlenpufferlaenge, 63 # Zahlenpufferlänge+1 sollte durch 4 teilbar sein !      Number buffer (Length+1 mod 4 = 0)
-ramallot Zahlenpuffer, Zahlenpufferlaenge+1 # Reserviere mal großzügig 64 Bytes RAM für den Zahlenpuffer
+.equ Zahlenpufferlaenge, 18*CELL-1 # Zahlenpufferlänge+1 sollte durch Zellengröße teilbar sein !      Number buffer (Length+1 mod CELL = 0)
+ramallot Zahlenpuffer, Zahlenpufferlaenge+1 # Reserviere mal großzügig 72 Bytes RAM für den Zahlenpuffer
 
 .ifndef datastacklength
-  .equ datastacklength, 512
+  .equ datastacklength, 128*CELL
 .endif
 .ifndef returnstacklength
-  .equ returnstacklength, 512
+  .equ returnstacklength, 128*CELL
 .endif
 .ifndef tiblength
   .equ tiblength, 200
@@ -236,7 +259,11 @@ ramallot Eingabepuffer, Maximaleeingabe  # Eingabepuffer wird einen Adresse-Län
 .macro writeln Meldung
   call dotgaensefuesschen
         .byte 8f - 7f         # Compute length of string.
+.ifdef crlf
+7:      .ascii "\Meldung\n\r"
+.else
 7:      .ascii "\Meldung\n"
+.endif
 
 .ifdef compressed_isa
 8:  .balign 2, 0      # Realign
@@ -249,7 +276,11 @@ ramallot Eingabepuffer, Maximaleeingabe  # Eingabepuffer wird einen Adresse-Län
 .macro welcome Meldung
   call dotgaensefuesschen
         .byte 8f - 7f         # Compute length of string.
-7:      .ascii "Mecrisp-Quintus 1.0.5\Meldung\n"
+.ifdef crlf
+7:      .ascii "Mecrisp-Quintus 1.1.0\Meldung\n\r"
+.else
+7:      .ascii "Mecrisp-Quintus 1.1.0\Meldung\n"
+.endif
 
 .ifdef compressed_isa
 8:  .balign 2, 0      # Realign
@@ -263,14 +294,14 @@ ramallot Eingabepuffer, Maximaleeingabe  # Eingabepuffer wird einen Adresse-Län
 # Vorbereitung der Dictionarystruktur
 # Preparations for dictionary structure
 # -----------------------------------------------------------------------------
-.balign 4, 0
+.balign CELL, 0
 CoreDictionaryAnfang: # Dictionary-Einsprungpunkt setzen
                       # Set entry point for Dictionary
 
 .set CoreVariablenPointer, RamDictionaryEnde # Im Flash definierte Variablen kommen ans RAM-Ende
                                              # Variables defined in Flash are placed at the end of RAM
 
-  Definition Flag_invisible, "--- Mecrisp-Quintus 1.0.5 ---"
+  Definition Flag_invisible, "--- Mecrisp-Quintus 1.1.0 ---"
 
 .include "flash.s"
 

@@ -24,7 +24,7 @@
 #------------------------------------------------------------------------------
   pushdaaddrf hook_emit
   ret
-  .word serial_emit  # Serial communication for default
+  .varinit serial_emit  # Serial communication for default
 
 #------------------------------------------------------------------------------
   Definition Flag_visible|Flag_variable, "hook-key" # ( -- addr )
@@ -32,7 +32,7 @@
 #------------------------------------------------------------------------------
   pushdaaddrf hook_key
   ret
-  .word serial_key  # Serial communication for default
+  .varinit serial_key  # Serial communication for default
 
 #------------------------------------------------------------------------------
   Definition Flag_visible|Flag_variable, "hook-emit?" # ( -- addr )
@@ -40,7 +40,7 @@
 #------------------------------------------------------------------------------
   pushdaaddrf hook_qemit
   ret
-  .word serial_qemit  # Serial communication for default
+  .varinit serial_qemit  # Serial communication for default
 
 #------------------------------------------------------------------------------
   Definition Flag_visible|Flag_variable, "hook-key?" # ( -- addr )
@@ -48,7 +48,7 @@
 #------------------------------------------------------------------------------
   pushdaaddrf hook_qkey
   ret
-  .word serial_qkey  # Serial communication for default
+  .varinit serial_qkey  # Serial communication for default
 
 #------------------------------------------------------------------------------
   Definition Flag_visible|Flag_variable, "hook-pause" # ( -- addr )
@@ -56,7 +56,7 @@
 #------------------------------------------------------------------------------
   pushdaaddrf hook_pause
   ret
-  .word nop_vektor  # No Pause defined for default
+  .varinit nop_vektor  # No Pause defined for default
 
 #------------------------------------------------------------------------------
   Definition Flag_visible, "nop" # ( -- )
@@ -69,7 +69,10 @@ nop_vektor:
 emit:
 #------------------------------------------------------------------------------
   laf x15, hook_emit
-  lw x15, 0(x15)
+  lc x15, 0(x15)
+  .ifdef thejas32_pipeline_bug
+  fence
+  .endif
   .ifdef mipscore
   jr x15
   .else
@@ -81,7 +84,10 @@ emit:
 key:
 #------------------------------------------------------------------------------
   laf x15, hook_key
-  lw x15, 0(x15)
+  lc x15, 0(x15)
+  .ifdef thejas32_pipeline_bug
+  fence
+  .endif
   .ifdef mipscore
   jr x15
   .else
@@ -92,7 +98,10 @@ key:
   Definition Flag_visible, "emit?" # ( -- ? )
 #------------------------------------------------------------------------------
   laf x15, hook_qemit
-  lw x15, 0(x15)
+  lc x15, 0(x15)
+  .ifdef thejas32_pipeline_bug
+  fence
+  .endif
   .ifdef mipscore
   jr x15
   .else
@@ -103,7 +112,10 @@ key:
   Definition Flag_visible, "key?" # ( -- ? )
 #------------------------------------------------------------------------------
   laf x15, hook_qkey
-  lw x15, 0(x15)
+  lc x15, 0(x15)
+  .ifdef thejas32_pipeline_bug
+  fence
+  .endif
    .ifdef mipscore
   jr x15
   .else
@@ -115,7 +127,10 @@ key:
 pause:
 #------------------------------------------------------------------------------
   laf x15, hook_pause
-  lw x15, 0(x15)
+  lc x15, 0(x15)
+  .ifdef thejas32_pipeline_bug
+  fence
+  .endif
   .ifdef mipscore
   jr x15
   .else
@@ -166,22 +181,22 @@ pause:
 
    la x15, serial_emit
    laf x14, hook_emit
-   sw x15, 0(x14)
+   sc x15, 0(x14)
 
    la x15, serial_qemit
    laf x14, hook_qemit
-   sw x15, 0(x14)
+   sc x15, 0(x14)
 
    la x15, serial_key
    laf x14, hook_key
-   sw x15, 0(x14)
+   sc x15, 0(x14)
 
    la x15, serial_qkey
    laf x14, hook_qkey
-   sw x15, 0(x14)
+   sc x15, 0(x14)
 
    la x15, nop_vektor
    laf x14, hook_pause
-   sw x15, 0(x14)
+   sc x15, 0(x14)
 
 .endm
