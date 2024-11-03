@@ -11,6 +11,17 @@
 `include "../../common-verilog/ringoscillator-ecp5.v"
 `include "../../common-verilog/sdram/muchtoremember.v"
 
+`include "../../common-verilog/usb_cdc/bulk_endp.v"
+`include "../../common-verilog/usb_cdc/ctrl_endp.v"
+`include "../../common-verilog/usb_cdc/in_fifo.v"
+`include "../../common-verilog/usb_cdc/out_fifo.v"
+`include "../../common-verilog/usb_cdc/phy_rx.v"
+`include "../../common-verilog/usb_cdc/phy_tx.v"
+`include "../../common-verilog/usb_cdc/sie.v"
+`include "../../common-verilog/usb_cdc/usb_cdc.v"
+
+`include "adcfifo.v"
+
 module ulx3s(
 
   input clk_25mhz,
@@ -30,9 +41,9 @@ module ulx3s(
   output flash_wpn,    // IO2
   output flash_holdn,  // IO3
 
-  output adc_sclk,
-  output adc_csn,
-  output adc_mosi,
+  output reg adc_sclk,
+  output reg adc_csn,
+  output reg adc_mosi,
   input  adc_miso,
 
   output sd_cmd,
@@ -53,6 +64,10 @@ module ulx3s(
   output ftdi_rxd, // UART TX
   input  ftdi_txd, // UART RX
 
+  inout  usb_fpga_bd_dp,
+  inout  usb_fpga_bd_dn,
+  output usb_fpga_pu_dp,
+
   output sdram_csn,       // chip select
   output sdram_clk,       // clock to SDRAM
   output sdram_cke,       // clock enable to SDRAM
@@ -72,6 +87,10 @@ module ulx3s(
 
    wire clk = clk_25mhz;
 
+   wire clk_48mhz;
+   wire pll_locked;
+   pll _pll( .clkin(clk_25mhz), .clkout0(clk_48mhz), .locked(pll_locked) );  // 48 MHz
+
    // Tie GPIO0 high, keep board from rebooting
    assign wifi_gpio0 = 1;
 
@@ -86,8 +105,8 @@ module ulx3s(
    wire resetq = &reset_cnt;
 
    always @(posedge clk) begin
-     if (btn[0]) reset_cnt <= reset_cnt + !resetq;
-     else        reset_cnt <= 0;
+     if (btn[0] & pll_locked) reset_cnt <= reset_cnt + !resetq;
+     else                     reset_cnt <= 0;
    end
 
    /***************************************************************************/
@@ -165,6 +184,62 @@ module ulx3s(
    );
 
    /***************************************************************************/
+   // USB Terminal.
+   /***************************************************************************/
+
+   wire usb_valid, usb_ready, usb_configured;
+   wire [7:0] usb_data;
+   wire usb_wr = io_wstrb & mem_address[IO_USB_DAT_bit];
+   wire usb_rd = io_rstrb & mem_address[IO_USB_DAT_bit];
+
+   usb_cdc #(.IN_BULK_MAXPACKETSIZE('d64), .OUT_BULK_MAXPACKETSIZE('d64), .VENDORID(16'h0483), .PRODUCTID(16'h5740), .USE_APP_CLK(1), .APP_CLK_FREQ(25)) _terminal
+   (
+     // Part running on 48 MHz:
+
+     .clk_i(clk_48mhz),
+
+     .dp_pu_o(usb_pullup),
+     .tx_en_o(usb_tx_en),
+     .dp_tx_o(usb_p_tx),
+     .dn_tx_o(usb_n_tx),
+     .dp_rx_i(usb_p_rx),
+     .dn_rx_i(usb_n_rx),
+
+     // Part running on 25 MHz:
+
+     .app_clk_i(clk),
+     .rstn_i(pll_locked), // Keep connection alive, only reset when PLL is trying to lock.
+     .configured_o(usb_configured),
+
+     .out_data_o(usb_data),
+     .out_valid_o(usb_valid),
+     .out_ready_i(usb_rd),
+
+     .in_data_i(mem_wdata[7:0]),
+     .in_ready_o(usb_ready),
+     .in_valid_i(usb_wr)
+   );
+
+   wire usb_p_tx;
+   wire usb_n_tx;
+   wire usb_p_rx;
+   wire usb_n_rx;
+   wire usb_tx_en;
+   wire usb_pullup;
+
+   wire usb_p_in;
+   wire usb_n_in;
+
+   assign usb_p_rx = usb_tx_en ? 1'b1 : usb_p_in;
+   assign usb_n_rx = usb_tx_en ? 1'b0 : usb_n_in;
+
+   // T = TRISTATE (not transmit)
+   BB io_p( .I( usb_p_tx ), .T( !usb_tx_en ), .O( usb_p_in ), .B( usb_fpga_bd_dp ) );
+   BB io_n( .I( usb_n_tx ), .T( !usb_tx_en ), .O( usb_n_in ), .B( usb_fpga_bd_dn ) );
+
+   assign usb_fpga_pu_dp = usb_pullup ? 1'b1 : 1'bz;
+
+   /***************************************************************************/
    // OLED.
    /***************************************************************************/
 
@@ -177,15 +252,6 @@ module ulx3s(
    BBPU oled2  (.B(oled_resn ), .I(oled_out[ 2]), .O(oled_in[ 2]), .T(~oled_dir[ 2]));
    BBPU oled3  (.B(oled_dc   ), .I(oled_out[ 3]), .O(oled_in[ 3]), .T(~oled_dir[ 3]));
    BBPU oled4  (.B(oled_csn  ), .I(oled_out[ 4]), .O(oled_in[ 4]), .T(~oled_dir[ 4]));
-
-   /***************************************************************************/
-   // ADC.
-   /***************************************************************************/
-
-   wire      adc_in = adc_miso;
-   reg [2:0] adc_out;
-
-   assign {adc_csn, adc_sclk, adc_mosi} = adc_out;
 
    /***************************************************************************/
    // SD-Card.
@@ -205,6 +271,75 @@ module ulx3s(
    assign audio_l = analog_out[3:0];
    assign audio_r = analog_out[7:4];
    assign audio_v = analog_out[11:8];
+
+   /***************************************************************************/
+   // ADC.
+   /***************************************************************************/
+
+   // MAX11125, CPOL=CPHA=1
+   // /CS soll fallen, während CLK high ist.
+
+   // Set CS low to latch input data at DIN on the rising edge
+   // of SCLK. Output data at DOUT is updated on the falling
+   // edge of SCLK.
+
+   reg [3:0] adc_channel = 0;
+   reg [3:0] adc_channel_next = 0;
+
+   reg [11:0] wandel = 0;           // 12 Bits frisch vom ADC
+   reg  [4:0] wandlungszyklus = 0; // Läuft von 0 bis 31. Bei 25 MHz ergibt das eine Samplerate von 25 MHz / 2 / 16 = 0.78125 MHz.
+
+   localparam wandlung_filterbits = 0; // 0 for raw data, more for exponential moving average
+   reg [15 + wandlung_filterbits:0] wandelfilter;  wire [15:0] wandelergebnis = wandelfilter[15 + wandlung_filterbits : wandlung_filterbits];
+
+   always @(posedge clk) begin
+
+     if (!resetq) wandlungszyklus <= 0;
+     else         wandlungszyklus <= wandlungszyklus + 1;
+
+     adc_sclk <= wandlungszyklus[0]; // Specified for a maximum frequency of 16 MHz
+
+     if (wandlungszyklus ==  0*2+0) begin adc_mosi <= 0; adc_channel <= adc_channel_next; end   if (wandlungszyklus ==  0*2+1) begin                         end //    REG_CNTL = 0 --> ADC Mode Control Register
+     if (wandlungszyklus ==  1*2+0) begin adc_mosi <= 0;                                  end   if (wandlungszyklus ==  1*2+1) begin wandel[11] <= adc_miso; end //     Scan[3] = 0
+     if (wandlungszyklus ==  2*2+0) begin adc_mosi <= 0;                                  end   if (wandlungszyklus ==  2*2+1) begin wandel[10] <= adc_miso; end //     Scan[2] = 0
+     if (wandlungszyklus ==  3*2+0) begin adc_mosi <= 0;                                  end   if (wandlungszyklus ==  3*2+1) begin wandel[ 9] <= adc_miso; end //     Scan[1] = 0
+     if (wandlungszyklus ==  4*2+0) begin adc_mosi <= 1;                                  end   if (wandlungszyklus ==  4*2+1) begin wandel[ 8] <= adc_miso; end //     Scan[0] = 1  --> Manual
+     if (wandlungszyklus ==  5*2+0) begin adc_mosi <= adc_channel[3];                     end   if (wandlungszyklus ==  5*2+1) begin wandel[ 7] <= adc_miso; end //  Channel[3]
+     if (wandlungszyklus ==  6*2+0) begin adc_mosi <= adc_channel[2];                     end   if (wandlungszyklus ==  6*2+1) begin wandel[ 6] <= adc_miso; end //  Channel[2]
+     if (wandlungszyklus ==  7*2+0) begin adc_mosi <= adc_channel[1];                     end   if (wandlungszyklus ==  7*2+1) begin wandel[ 5] <= adc_miso; end //  Channel[1]
+     if (wandlungszyklus ==  8*2+0) begin adc_mosi <= adc_channel[0];                     end   if (wandlungszyklus ==  8*2+1) begin wandel[ 4] <= adc_miso; end //  Channel[0]
+     if (wandlungszyklus ==  9*2+0) begin adc_mosi <= 0;                                  end   if (wandlungszyklus ==  9*2+1) begin wandel[ 3] <= adc_miso; end //    Reset[1] = 0
+     if (wandlungszyklus == 10*2+0) begin adc_mosi <= 0;                                  end   if (wandlungszyklus == 10*2+1) begin wandel[ 2] <= adc_miso; end //    Reset[0] = 0 --> No Reset
+     if (wandlungszyklus == 11*2+0) begin adc_mosi <= 0;                                  end   if (wandlungszyklus == 11*2+1) begin wandel[ 1] <= adc_miso; end //       PM[1] = 0
+     if (wandlungszyklus == 12*2+0) begin adc_mosi <= 0;                                  end   if (wandlungszyklus == 12*2+1) begin wandel[ 0] <= adc_miso; end //       PM[0] = 0 --> Normal
+     if (wandlungszyklus == 13*2+0) begin adc_mosi <= 0;                                  end   if (wandlungszyklus == 13*2+1) begin                         end //     CHAN_ID = 0 --> No channel ID
+     if (wandlungszyklus == 14*2+0) begin adc_mosi <= 0;                                  end   if (wandlungszyklus == 14*2+1) begin                         end //       SWCNV = 0 Unused in external clock mode
+     if (wandlungszyklus == 15*2+0) begin adc_mosi <= 0;                                  end   if (wandlungszyklus == 15*2+1) begin                         end //      Unused = 0
+
+     if (wandlungszyklus == 30) begin wandelfilter <= (wandelfilter - (wandelfilter >> wandlung_filterbits)) + wandel; end
+   end
+
+   always @(negedge clk) begin
+     if (wandlungszyklus ==  0*2+0) adc_csn <= 0;  // <-- In external clock mode, the analog inputs are sampled at the falling edge of CS.
+     if (wandlungszyklus == 15*2+1) adc_csn <= 1;
+   end
+
+   // Ring buffer FIFO for storing the measurement results of the ADC
+
+   wire fifo_store = wandlungszyklus == 31;
+   wire adc_rd = io_rstrb & mem_address[IO_ADC_DAT_bit];
+
+   wire adc_valid; wire [15:0] adc_fifo;
+
+   adcfifo _fifo_I0 (
+     .clk(clk),
+     .resetq(resetq),
+     .wr(fifo_store),
+     .rd(adc_rd),
+     .store_data(wandelergebnis),
+     .fetch_data(adc_fifo),
+     .valid(adc_valid)
+   );
 
    /***************************************************************************/
    // IO Ports.
@@ -235,10 +370,14 @@ module ulx3s(
    localparam IO_Ticks_bit       = 18; // RW: Timer count register
    localparam IO_Reload_bit      = 19; // RW: Timer reload value
 
-   localparam IO_ADC_IN_bit      = 20; // R:  ADC in
-   localparam IO_ADC_OUT_bit     = 21; // RW: ADC out
+   localparam IO_ADC_DAT_bit     = 20; // R:  ADC Data
+   localparam IO_ADC_CNTL_bit    = 21; // R:  ADC Flags
    localparam IO_SD_IN_bit       = 22; // R:  SD-Card in
    localparam IO_SD_OUT_bit      = 23; // RW: SD-Card out
+
+   localparam IO_USB_DAT_bit     = 24; // RW write: data to send (8 bits) read: received data (8 bits)
+   localparam IO_USB_CNTL_bit    = 25; // R  status. bit 8: valid read data. bit 9: busy sending
+   localparam IO_ADC_CHANNEL_bit = 26; // RW ADC Channel
 
    wire [31:0] io_rdata =
 
@@ -262,8 +401,13 @@ module ulx3s(
       (mem_address[IO_Ticks_bit      ] ?  ticks                                    : 32'd0) |
       (mem_address[IO_Reload_bit     ] ?  reload                                   : 32'd0) |
 
-      (mem_address[IO_ADC_IN_bit     ] ?  adc_in                                   : 32'd0) |
-      (mem_address[IO_ADC_OUT_bit    ] ?  adc_out                                  : 32'd0) |
+      (mem_address[IO_USB_DAT_bit    ] |
+       mem_address[IO_USB_CNTL_bit   ] ? {usb_configured, ~usb_ready, usb_valid, usb_data} : 32'd0) |
+
+      (mem_address[IO_ADC_DAT_bit    ] |
+       mem_address[IO_ADC_CNTL_bit   ] ? {adc_valid, adc_fifo}                     : 32'd0) |
+      (mem_address[IO_ADC_CHANNEL_bit] ?  adc_channel_next                         : 32'd0) |
+
       (mem_address[IO_SD_IN_bit      ] ?  sd_in                                    : 32'd0) |
       (mem_address[IO_SD_OUT_bit     ] ?  sd_out                                   : 32'd0) ;
 
@@ -296,12 +440,12 @@ module ulx3s(
      if (mem_address_is_io & mem_address[IO_PORTB_DIR_bit] & mem_wmask[2]) portb_dir[23:16] <= io_modifier[23:16];
      if (mem_address_is_io & mem_address[IO_PORTB_DIR_bit] & mem_wmask[3]) portb_dir[31:24] <= io_modifier[31:24];
 
-     if (io_wstrb & mem_address[IO_ADC_OUT_bit   ]) adc_out    <= io_modifier;
-     if (io_wstrb & mem_address[IO_OLED_OUT_bit  ]) oled_out   <= io_modifier;
-     if (io_wstrb & mem_address[IO_OLED_DIR_bit  ]) oled_dir   <= io_modifier;
-     if (io_wstrb & mem_address[IO_SD_OUT_bit    ]) sd_out     <= io_modifier;
-     if (io_wstrb & mem_address[IO_ANALOG_OUT_bit]) analog_out <= io_modifier;
-     if (io_wstrb & mem_address[IO_LEDS_bit    ]) LEDs     <= io_modifier;
+     if (io_wstrb & mem_address[IO_ADC_CHANNEL_bit]) adc_channel_next <= io_modifier;
+     if (io_wstrb & mem_address[IO_OLED_OUT_bit   ]) oled_out         <= io_modifier;
+     if (io_wstrb & mem_address[IO_OLED_DIR_bit   ]) oled_dir         <= io_modifier;
+     if (io_wstrb & mem_address[IO_SD_OUT_bit     ]) sd_out           <= io_modifier;
+     if (io_wstrb & mem_address[IO_ANALOG_OUT_bit ]) analog_out       <= io_modifier;
+     if (io_wstrb & mem_address[IO_LEDS_bit       ]) LEDs             <= io_modifier;
 
    end
 
@@ -492,3 +636,57 @@ module ulx3s(
       (buffered_mem_address_is_sdram     ? sdram_rdata            : 32'd0) ;
 
 endmodule
+
+
+// 48 MHz clock for USB
+// ecppll -i 25 -o 48 --highres -f /dev/stdout
+
+module pll
+(
+    input clkin, // 25 MHz, 0 deg
+    output clkout0, // 48 MHz, 0 deg
+    output locked
+);
+wire clkfb;
+(* FREQUENCY_PIN_CLKI="25" *)
+(* FREQUENCY_PIN_CLKOS="48" *)
+(* ICP_CURRENT="12" *) (* LPF_RESISTOR="8" *) (* MFG_ENABLE_FILTEROPAMP="1" *) (* MFG_GMCREF_SEL="2" *)
+EHXPLLL #(
+        .PLLRST_ENA("DISABLED"),
+        .INTFB_WAKE("DISABLED"),
+        .STDBY_ENABLE("DISABLED"),
+        .DPHASE_SOURCE("DISABLED"),
+        .OUTDIVIDER_MUXA("DIVA"),
+        .OUTDIVIDER_MUXB("DIVB"),
+        .OUTDIVIDER_MUXC("DIVC"),
+        .OUTDIVIDER_MUXD("DIVD"),
+        .CLKI_DIV(5),
+        .CLKOP_ENABLE("ENABLED"),
+        .CLKOP_DIV(48),
+        .CLKOP_CPHASE(9),
+        .CLKOP_FPHASE(0),
+        .CLKOS_ENABLE("ENABLED"),
+        .CLKOS_DIV(10),
+        .CLKOS_CPHASE(0),
+        .CLKOS_FPHASE(0),
+        .FEEDBK_PATH("CLKOP"),
+        .CLKFB_DIV(2)
+    ) pll_i (
+        .RST(1'b0),
+        .STDBY(1'b0),
+        .CLKI(clkin),
+        .CLKOP(clkfb),
+        .CLKOS(clkout0),
+        .CLKFB(clkfb),
+        .CLKINTFB(),
+        .PHASESEL0(1'b0),
+        .PHASESEL1(1'b0),
+        .PHASEDIR(1'b1),
+        .PHASESTEP(1'b1),
+        .PHASELOADREG(1'b1),
+        .PLLWAKESYNC(1'b0),
+        .ENCLKOP(1'b0),
+        .LOCK(locked)
+        );
+endmodule
+

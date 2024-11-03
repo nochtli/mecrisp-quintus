@@ -1,0 +1,108 @@
+
+\ ------------------------------------------------------------------------------
+\   Registers
+\ ------------------------------------------------------------------------------
+
+$40100000 constant adc-data
+$40200000 constant adc-ctrl
+$44000000 constant adc-channel
+
+\ ------------------------------------------------------------------------------
+\   Capture using FIFOs in logic
+\ ------------------------------------------------------------------------------
+
+: capture ( -- )
+  \ Clear FIFO
+  begin
+    adc-ctrl @ $10000 and
+  while
+    adc-data h@ drop
+  repeat
+
+  \ Capture measurements
+  fft-real
+  begin
+    begin adc-ctrl @ $10000 and until
+    adc-data h@
+
+    over !
+    1 cells +
+    dup fft-real N_WAVE cells + =
+  until
+  drop
+
+  fft-imag N_WAVE cells 0 fill
+;
+
+
+
+\ #######   RANDOM   ##########################################
+
+\ setseed   sets the random number seed
+\ random    returns a random 32-bit number
+\
+\ based on "Xorshift RNGs" by George Marsaglia
+\ http://www.jstatsoft.org/v08/i14/paper
+
+$7a92764b variable seed
+
+: setseed   ( u -- )
+    dup 0= or       \ map 0 to -1
+    seed !
+;
+
+: random    ( -- u )
+    seed @
+    dup 13 lshift xor
+    dup 17 rshift xor
+    dup 5  lshift xor
+    dup seed !
+    57947 *
+;
+
+: randrange  ( u0 -- u1 ) \ u1 is a random number less than u0
+    random um* nip
+;
+
+
+
+
+: zufall ( -- )
+
+  \ Capture measurements
+  fft-real
+  begin
+    random
+
+    over !
+    1 cells +
+    dup fft-real N_WAVE cells + =
+  until
+  drop
+
+  fft-imag N_WAVE cells 0 fill
+;
+
+\ ------------------------------------------------------------------------------
+\   Analyse the signal
+\ ------------------------------------------------------------------------------
+
+: show ( -- )
+
+  signalplot-lin-min-max
+  printstats
+  signal-binning
+
+  \ un<->signed
+
+  LOG2_N_WAVE false fix-fft drop
+  LOG2_N_WAVE fftswap
+
+  781,250 samplerate 2!
+  fftplot-log
+;
+
+\ How to use:
+\
+\   0 adc-channel io!
+\   capture show

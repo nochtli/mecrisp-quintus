@@ -1,0 +1,52 @@
+: live-bins ( -- )
+
+  \ Clear bins
+  64 0 do 0 i fft-imag! loop
+
+  \ Collect all data points into bins
+  N_WAVE 0 do
+    1  i fft-real@ 6 rshift cells fft-imag +  +!  \ 10 rshift for 16 bit ADC, 6 rshift for 12 bit ADC
+  loop
+
+  \ Find maximum value for scaling
+  0
+  64 0 do i fft-imag@ umax loop
+  bitlog ( maxcount )
+
+  \ Print bins as scaled ASCII art
+  64 0 do
+    i fft-imag@ bitlog ( maxcount count )
+
+    over 8 swap u*/  \ Scale maximum to available chars
+
+    \  01234567890123456789012345678901234
+    s"  _.,:;!|@" drop
+
+    + c@ emit
+  loop
+  drop
+
+  \ Show bins on the eight available LEDs
+  0
+  64 0 do
+    i fft-imag@ ( counts-in-bin ) 0<> if 1 i 3 rshift lshift or then
+  loop
+  leds
+;
+
+: esc? ( -- ? ) key? if key 27 = else false then ;
+
+: live ( -- )
+  cr
+  begin
+    capture
+    stats
+
+    rot    ." Avg: " NUMLENGTH u.r
+    swap ."   Min: " NUMLENGTH u.r
+         ."   Max: " NUMLENGTH u.r
+
+    ."   [" live-bins ." ]" cr
+
+  esc? until
+;

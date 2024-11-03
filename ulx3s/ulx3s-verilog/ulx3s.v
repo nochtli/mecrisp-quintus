@@ -11,6 +11,15 @@
 `include "../../common-verilog/ringoscillator-ecp5.v"
 `include "../../common-verilog/sdram/muchtoremember.v"
 
+`include "../../common-verilog/usb_cdc/bulk_endp.v"
+`include "../../common-verilog/usb_cdc/ctrl_endp.v"
+`include "../../common-verilog/usb_cdc/in_fifo.v"
+`include "../../common-verilog/usb_cdc/out_fifo.v"
+`include "../../common-verilog/usb_cdc/phy_rx.v"
+`include "../../common-verilog/usb_cdc/phy_tx.v"
+`include "../../common-verilog/usb_cdc/sie.v"
+`include "../../common-verilog/usb_cdc/usb_cdc.v"
+
 module ulx3s(
 
   input clk_25mhz,
@@ -53,6 +62,10 @@ module ulx3s(
   output ftdi_rxd, // UART TX
   input  ftdi_txd, // UART RX
 
+  inout  usb_fpga_bd_dp,
+  inout  usb_fpga_bd_dn,
+  output usb_fpga_pu_dp,
+
   output sdram_csn,       // chip select
   output sdram_clk,       // clock to SDRAM
   output sdram_cke,       // clock enable to SDRAM
@@ -71,8 +84,14 @@ module ulx3s(
    /***************************************************************************/
 
    wire clk;
+   wire pll_locked40;
+   pll40 _pll_clk( .clkin(clk_25mhz), .clkout0(clk), .locked(pll_locked40) );  // 40 MHz
 
-   pll _pll( .clkin(clk_25mhz), .clkout0(clk) );  // 40 MHz
+   wire clk_48mhz;
+   wire pll_locked48;
+   pll48 _pll_usb( .clkin(clk_25mhz), .clkout0(clk_48mhz), .locked(pll_locked48) );  // 48 MHz
+
+   wire pll_locked = pll_locked40 & pll_locked48;
 
    // Tie GPIO0 high, keep board from rebooting
    assign wifi_gpio0 = 1;
@@ -88,8 +107,8 @@ module ulx3s(
    wire resetq = &reset_cnt;
 
    always @(posedge clk) begin
-     if (btn[0]) reset_cnt <= reset_cnt + !resetq;
-     else        reset_cnt <= 0;
+     if (btn[0] & pll_locked) reset_cnt <= reset_cnt + !resetq;
+     else                     reset_cnt <= 0;
    end
 
    /***************************************************************************/
@@ -167,6 +186,62 @@ module ulx3s(
    );
 
    /***************************************************************************/
+   // USB Terminal.
+   /***************************************************************************/
+
+   wire usb_valid, usb_ready, usb_configured;
+   wire [7:0] usb_data;
+   wire usb_wr = io_wstrb & mem_address[IO_USB_DAT_bit];
+   wire usb_rd = io_rstrb & mem_address[IO_USB_DAT_bit];
+
+   usb_cdc #(.IN_BULK_MAXPACKETSIZE('d64), .OUT_BULK_MAXPACKETSIZE('d64), .VENDORID(16'h0483), .PRODUCTID(16'h5740), .USE_APP_CLK(1), .APP_CLK_FREQ(40)) _terminal
+   (
+     // Part running on 48 MHz:
+
+     .clk_i(clk_48mhz),
+
+     .dp_pu_o(usb_pullup),
+     .tx_en_o(usb_tx_en),
+     .dp_tx_o(usb_p_tx),
+     .dn_tx_o(usb_n_tx),
+     .dp_rx_i(usb_p_rx),
+     .dn_rx_i(usb_n_rx),
+
+     // Part running on 40 MHz:
+
+     .app_clk_i(clk),
+     .rstn_i(pll_locked), // Keep connection alive, only reset when PLL is trying to lock.
+     .configured_o(usb_configured),
+
+     .out_data_o(usb_data),
+     .out_valid_o(usb_valid),
+     .out_ready_i(usb_rd),
+
+     .in_data_i(mem_wdata[7:0]),
+     .in_ready_o(usb_ready),
+     .in_valid_i(usb_wr)
+   );
+
+   wire usb_p_tx;
+   wire usb_n_tx;
+   wire usb_p_rx;
+   wire usb_n_rx;
+   wire usb_tx_en;
+   wire usb_pullup;
+
+   wire usb_p_in;
+   wire usb_n_in;
+
+   assign usb_p_rx = usb_tx_en ? 1'b1 : usb_p_in;
+   assign usb_n_rx = usb_tx_en ? 1'b0 : usb_n_in;
+
+   // T = TRISTATE (not transmit)
+   BB io_p( .I( usb_p_tx ), .T( !usb_tx_en ), .O( usb_p_in ), .B( usb_fpga_bd_dp ) );
+   BB io_n( .I( usb_n_tx ), .T( !usb_tx_en ), .O( usb_n_in ), .B( usb_fpga_bd_dn ) );
+
+   assign usb_fpga_pu_dp = usb_pullup ? 1'b1 : 1'bz;
+
+   /***************************************************************************/
    // OLED.
    /***************************************************************************/
 
@@ -242,6 +317,9 @@ module ulx3s(
    localparam IO_SD_IN_bit       = 22; // R:  SD-Card in
    localparam IO_SD_OUT_bit      = 23; // RW: SD-Card out
 
+   localparam IO_USB_DAT_bit     = 24; // RW write: data to send (8 bits) read: received data (8 bits)
+   localparam IO_USB_CNTL_bit    = 25; // R  status. bit 8: valid read data. bit 9: busy sending
+
    wire [31:0] io_rdata =
 
       (mem_address[IO_PORTA_IN_bit   ] ?  porta_in                                 : 32'd0) |
@@ -263,6 +341,9 @@ module ulx3s(
        mem_address[IO_UART_CNTL_bit  ] ? {serial_busy, serial_valid, serial_data}  : 32'd0) |
       (mem_address[IO_Ticks_bit      ] ?  ticks                                    : 32'd0) |
       (mem_address[IO_Reload_bit     ] ?  reload                                   : 32'd0) |
+
+      (mem_address[IO_USB_DAT_bit    ] |
+       mem_address[IO_USB_CNTL_bit   ] ? {usb_configured, ~usb_ready, usb_valid, usb_data} : 32'd0) |
 
       (mem_address[IO_ADC_IN_bit     ] ?  adc_in                                   : 32'd0) |
       (mem_address[IO_ADC_OUT_bit    ] ?  adc_out                                  : 32'd0) |
@@ -303,7 +384,7 @@ module ulx3s(
      if (io_wstrb & mem_address[IO_OLED_DIR_bit  ]) oled_dir   <= io_modifier;
      if (io_wstrb & mem_address[IO_SD_OUT_bit    ]) sd_out     <= io_modifier;
      if (io_wstrb & mem_address[IO_ANALOG_OUT_bit]) analog_out <= io_modifier;
-     if (io_wstrb & mem_address[IO_LEDS_bit    ]) LEDs     <= io_modifier;
+     if (io_wstrb & mem_address[IO_LEDS_bit      ]) LEDs     <= io_modifier;
 
    end
 
@@ -465,7 +546,7 @@ endmodule
 // 40 MHz system clock
 // ecppll -i 25 -o 40 -f /dev/stdout
 
-module pll
+module pll40
 (
     input clkin, // 25 MHz, 0 deg
     output clkout0, // 40 MHz, 0 deg
@@ -507,3 +588,57 @@ EHXPLLL #(
         .LOCK(locked)
         );
 endmodule
+
+
+// 48 MHz clock for USB
+// ecppll -i 25 -o 48 --highres -f /dev/stdout
+
+module pll48
+(
+    input clkin, // 25 MHz, 0 deg
+    output clkout0, // 48 MHz, 0 deg
+    output locked
+);
+wire clkfb;
+(* FREQUENCY_PIN_CLKI="25" *)
+(* FREQUENCY_PIN_CLKOS="48" *)
+(* ICP_CURRENT="12" *) (* LPF_RESISTOR="8" *) (* MFG_ENABLE_FILTEROPAMP="1" *) (* MFG_GMCREF_SEL="2" *)
+EHXPLLL #(
+        .PLLRST_ENA("DISABLED"),
+        .INTFB_WAKE("DISABLED"),
+        .STDBY_ENABLE("DISABLED"),
+        .DPHASE_SOURCE("DISABLED"),
+        .OUTDIVIDER_MUXA("DIVA"),
+        .OUTDIVIDER_MUXB("DIVB"),
+        .OUTDIVIDER_MUXC("DIVC"),
+        .OUTDIVIDER_MUXD("DIVD"),
+        .CLKI_DIV(5),
+        .CLKOP_ENABLE("ENABLED"),
+        .CLKOP_DIV(48),
+        .CLKOP_CPHASE(9),
+        .CLKOP_FPHASE(0),
+        .CLKOS_ENABLE("ENABLED"),
+        .CLKOS_DIV(10),
+        .CLKOS_CPHASE(0),
+        .CLKOS_FPHASE(0),
+        .FEEDBK_PATH("CLKOP"),
+        .CLKFB_DIV(2)
+    ) pll_i (
+        .RST(1'b0),
+        .STDBY(1'b0),
+        .CLKI(clkin),
+        .CLKOP(clkfb),
+        .CLKOS(clkout0),
+        .CLKFB(clkfb),
+        .CLKINTFB(),
+        .PHASESEL0(1'b0),
+        .PHASESEL1(1'b0),
+        .PHASEDIR(1'b1),
+        .PHASESTEP(1'b1),
+        .PHASELOADREG(1'b1),
+        .PLLWAKESYNC(1'b0),
+        .ENCLKOP(1'b0),
+        .LOCK(locked)
+        );
+endmodule
+

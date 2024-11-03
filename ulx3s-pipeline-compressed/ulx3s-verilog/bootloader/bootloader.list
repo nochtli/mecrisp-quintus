@@ -1,5 +1,5 @@
 
-bootloader.elf:     file format elf32-littleriscv
+bootloader.elf:     Dateiformat elf32-littleriscv
 
 
 Disassembly of section .text:
@@ -7,9 +7,30 @@ Disassembly of section .text:
 80000000 <.text>:
 80000000:	80220437          	lui	x8,0x80220
 80000004:	000204b7          	lui	x9,0x20
-80000008:	ffc40413          	addi	x8,x8,-4 # 0x8021fffc
-8000000c:	ffc48493          	addi	x9,x9,-4 # 0x1fffc
+80000008:	ffc40413          	addi	x8,x8,-4 # 8021fffc <.text+0x21fffc>
+8000000c:	ffc48493          	addi	x9,x9,-4 # 1fffc <.text-0x7ffe0004>
 80000010:	00042503          	lw	x10,0(x8)
 80000014:	00a4a023          	sw	x10,0(x9)
-80000018:	fe0498e3          	bnez	x9,0x80000008
-8000001c:	00000067          	jr	x0 # 0x0
+80000018:	fe0498e3          	bnez	x9,80000008 <.text+0x8>
+8000001c:	00000067          	jr	x0 # 0 <.text-0x80000000>
+
+Disassembly of section .riscv.attributes:
+
+00000000 <.riscv.attributes>:
+   0:	2741                	.insn	2, 0x2741
+   2:	0000                	.insn	2, 0x
+   4:	7200                	.insn	2, 0x7200
+   6:	7369                	.insn	2, 0x7369
+   8:	01007663          	bgeu	x0,x16,14 <.riscv.attributes+0x14>
+   c:	001d                	.insn	2, 0x001d
+   e:	0000                	.insn	2, 0x
+  10:	7205                	.insn	2, 0x7205
+  12:	3376                	.insn	2, 0x3376
+  14:	6932                	.insn	2, 0x6932
+  16:	7032                	.insn	2, 0x7032
+  18:	5f30                	.insn	2, 0x5f30
+  1a:	326d                	.insn	2, 0x326d
+  1c:	3070                	.insn	2, 0x3070
+  1e:	7a5f 6d6d 6c75      	.insn	6, 0x6c756d6d7a5f
+  24:	7031                	.insn	2, 0x7031
+  26:	0030                	.insn	2, 0x0030

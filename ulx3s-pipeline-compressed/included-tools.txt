@@ -1623,6 +1623,9 @@ $40200000 constant adc-out
 $40400000 constant sd-in
 $40800000 constant sd-out
 
+$41000000 constant usb-data
+$42000000 constant usb-ctrl
+
 : clear  ( x addr -- )  4 + ! inline ;
 : set    ( x addr -- )  8 + ! inline ;
 : toggle ( x addr -- ) 12 + ! inline ;
@@ -1646,8 +1649,41 @@ $40800000 constant sd-out
 
 : random ( -- x ) 0 32 0 do 10 us 2* buttons @ 6 rshift or loop ;
 
+\ -----------------------------------------------------------------------------
+\  Terminal IO
+\ -----------------------------------------------------------------------------
+
+: usb-connected? ( -- ? ) usb-ctrl @ $400 and 0<> ; \ Are we configured already?
+
+: usb-emit? ( -- ? ) usb-ctrl @ $200 and 0= ;
+: usb-key?  ( -- ? ) usb-ctrl @ $100 and 0<> ;
+: usb-emit  ( c -- ) begin usb-emit? until usb-data c! ;
+: usb-key   ( -- c ) begin usb-key?  until usb-data c@ ;
+
+\ -----------------------------------------------------------------------------
+\  Terminal redirection
+\ -----------------------------------------------------------------------------
+
+: serial-terminal ( -- )
+  ['] serial-key?  hook-key?  !
+  ['] serial-emit? hook-emit? !
+  ['] serial-key   hook-key   !
+  ['] serial-emit  hook-emit  !
+;
+
+: usb-terminal ( -- )
+  ['] usb-key?  hook-key?  !
+  ['] usb-emit? hook-emit? !
+  ['] usb-key   hook-key   !
+  ['] usb-emit  hook-emit  !
+;
+
+\ -----------------------------------------------------------------------------
+\  Initialisation
+\ -----------------------------------------------------------------------------
+
 [ifdef] init
-  : init ( -- ) init welcome ;
+  : init ( -- ) usb-connected? if usb-terminal then init welcome ;
 [else]
-  : init ( -- )      welcome ;
+  : init ( -- ) usb-connected? if usb-terminal then      welcome ;
 [then]

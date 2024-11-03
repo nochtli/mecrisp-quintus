@@ -47,3 +47,4 @@ Inspiring projects:
 Logic tricks from the book Hacker's Delight (http://www.hackersdelight.org/)
 PIC32 VGA assembler code by Paul Boddie (https://blogs.fsfe.org/pboddie/?p=1712)
 FemtoRV32 by Bruno Levy and Matthias Koch https://github.com/BrunoLevy/learn-fpga/
+USB-CDC implementation by ulixxe: https://github.com/ulixxe/usb_cdc/

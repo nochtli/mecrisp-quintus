@@ -1,0 +1,441 @@
+
+\ Requires double, fixpoint, bitlog and fourier.
+
+\ ------------------------------------------------------------------------------
+\  A selection of useful tools
+\ ------------------------------------------------------------------------------
+
+0 INVERT                 CONSTANT MAX-UINT
+0 INVERT 1 RSHIFT        CONSTANT MAX-INT
+0 INVERT 1 RSHIFT INVERT CONSTANT MIN-INT
+
+12 CONSTANT NUMLENGTH \ 7 characters for 16 bit numbers, 12 characters for 32 bit numbers
+80 NUMLENGTH 2* 1+ - constant WIDTH
+
+\ Right-aligned number printing
+
+: d.r  ( d n -- )
+    >r
+    dup >r dabs <# #s r> sign #>
+    r> over - spaces type
+;
+
+:  .r  ( n1 n2 -- ) >r s>d r> d.r ;
+: u.r  ( u n -- )      0 swap d.r ;
+
+: m+ ( d n -- d' ) s>d d+ 3-foldable ;
+
+\ ------------------------------------------------------------------------------
+\  Heapsort
+\  https://rosettacode.org/wiki/Sorting_algorithms/Heapsort#Forth
+\ ------------------------------------------------------------------------------
+
+: r'@ r> r> r@ swap >r swap >r ;
+
+' < variable heapsort-comparison
+
+: precedes ( n1 n2 a -- f) >r cells r@ + @ swap cells r> + @ swap heapsort-comparison @ execute ;
+: exchange ( n1 n2 a --  ) >r cells r@ + swap cells r> + over @ over @ swap rot ! swap ! ;
+
+: siftDown                             ( a e s -- a e s)
+  swap >r swap >r dup                  ( s r)
+  begin                                ( s r)
+    dup 2* 1+ dup r'@ <                ( s r c f)
+  while                                ( s r c)
+    dup 1+ dup r'@ <                   ( s r c c+1 f)
+    if                                 ( s r c c+1)
+      over over r@ precedes if swap then
+    then drop                          ( s r c)
+    over over r@ precedes              ( s r c f)
+  while                                ( s r c)
+    tuck r@ exchange                   ( s r)
+  repeat then                          ( s r)
+  drop drop r> swap r> swap            ( a e s)
+;
+
+: heapsort-core                        ( a n --)
+  over >r                              ( a n)
+  dup 1- 1- 2/                         ( a c s)
+  begin                                ( a c s)
+    dup 0< 0=                          ( a c s f)
+  while                                ( a c s)
+    siftDown 1-                        ( a c s)
+  repeat drop                          ( a c)
+
+  1- 0                                 ( a e 0)
+  begin                                ( a e 0)
+    over 0 >                           ( a e 0 f)
+  while                                ( a e 0)
+    over over r@ exchange              ( a e 0)
+    siftDown swap 1- swap              ( a e 0)
+  repeat                               ( a e 0)
+  drop drop drop r> drop
+;
+
+
+: heapsort-signed ( addr len -- )
+  [']  < heapsort-comparison !
+  heapsort-core
+;
+
+: heapsort-unsigned ( addr len -- )
+  ['] u< heapsort-comparison !
+  heapsort-core
+;
+
+\ ------------------------------------------------------------------------------
+\  Switch between unsigned and signed
+\ ------------------------------------------------------------------------------
+
+: un<->signed ( -- ) \ Toggle sign bit
+  N_WAVE 0 do
+    i fft-real@ MIN-INT xor i fft-real!
+  loop
+;
+
+: un<->signed-imag ( -- ) \ Toggle sign bit
+  N_WAVE 0 do
+    i fft-imag@ MIN-INT xor i fft-imag!
+  loop
+;
+
+\ ------------------------------------------------------------------------------
+\  ASCII art tools
+\ ------------------------------------------------------------------------------
+
+
+: f.nr7 ( f -- ) ( f-Low f-High n -- ) \ Prints a s31.32 number
+
+  >r ( Low High R: n )
+
+  dup 0< >r
+  dabs
+  ( uLow uHigh )
+  0 <# #s   ( uLow 0 0 )
+
+  r> if [char] - hold then
+
+  drop swap ( 0 uLow )
+
+  [char] , hold<
+  r> 0 ?do f# loop
+
+  #> dup NUMLENGTH 2* swap - spaces
+
+  type space
+;
+
+: dashes 0 ?do [char] - emit loop ;
+
+: airbar ( min max -- )
+    2dup =
+    if
+      drop
+      spaces [char] | emit
+    else
+      over      spaces [char] < emit
+      swap - 1- spaces [char] > emit
+    then
+;
+
+: fillbar ( min max -- )
+    2dup =
+    if
+      drop
+      spaces [char] | emit
+    else
+      over      spaces [char] < emit
+      swap - 1- dashes [char] > emit
+    then
+;
+
+\ ------------------------------------------------------------------------------
+\  Signal statistics
+\ ------------------------------------------------------------------------------
+
+: stats ( -- avg umin umax )
+  0.
+  N_WAVE 0 do
+    i fft-real@  0 d+
+  loop
+  \ N_WAVE um/mod nip
+  LOG2_N_WAVE 2rshift drop
+
+  -1
+  N_WAVE 0 do
+    i fft-real@ umin
+  loop
+
+  0
+  N_WAVE 0 do
+    i fft-real@ umax
+  loop
+;
+
+: stats-signed ( -- avg min max )
+  0.
+  N_WAVE 0 do
+    i fft-real@  m+
+  loop
+  \ N_WAVE sm/rem nip
+  LOG2_N_WAVE 2arshift drop
+
+  MAX-INT
+  N_WAVE 0 do
+    i fft-real@ min
+  loop
+
+  MIN-INT
+  N_WAVE 0 do
+    i fft-real@ max
+  loop
+;
+
+: printstats ( -- )
+  cr
+  stats
+  rot  ." Avg: " NUMLENGTH u.r cr
+  swap ." Min: " NUMLENGTH u.r cr
+       ." Max: " NUMLENGTH u.r cr
+;
+
+: printstats-signed ( -- )
+  cr
+  stats-signed
+  rot  ." Avg: " NUMLENGTH .r cr
+  swap ." Min: " NUMLENGTH .r cr
+       ." Max: " NUMLENGTH .r cr
+;
+
+
+: printbin-signed ( bin count -- )
+  dup if swap NUMLENGTH .r NUMLENGTH .r cr else 2drop then
+;
+
+: signal-binning-signed ( -- )
+
+  cr
+  NUMLENGTH 2* 1+ dashes cr
+  NUMLENGTH 3 - spaces ." ADC"
+  NUMLENGTH 1 - spaces ." #" cr
+  NUMLENGTH 2* 1+ dashes
+
+  fft-real fft-imag N_WAVE cells move
+  fft-imag N_WAVE heapsort-signed
+
+  cr
+  MIN-INT 0
+  N_WAVE 0 do
+    over i fft-imag@ =
+    if 1+
+    else
+      printbin-signed
+      i fft-imag@ 1
+    then
+  loop
+  printbin-signed
+
+  fft-imag N_WAVE cells 0 fill
+;
+
+: printbin ( bin count -- )
+  dup if swap NUMLENGTH u.r NUMLENGTH u.r cr else 2drop then
+;
+
+: signal-binning ( -- )
+
+  cr
+  NUMLENGTH 2* 1+ dashes cr
+  NUMLENGTH 3 - spaces ." ADC"
+  NUMLENGTH 1 - spaces ." #" cr
+  NUMLENGTH 2* 1+ dashes
+
+  fft-real fft-imag N_WAVE cells move
+  fft-imag N_WAVE heapsort-unsigned
+
+  cr
+  0 0
+  N_WAVE 0 do
+    over i fft-imag@ =
+    if 1+
+    else
+      printbin
+      i fft-imag@ 1
+    then
+  loop
+  printbin
+
+  fft-imag N_WAVE cells 0 fill
+;
+
+\ ------------------------------------------------------------------------------
+\  Signal plotters
+\ ------------------------------------------------------------------------------
+
+: u*/ ( a b c -- d ) >r um* r> um/mod nip ;
+
+: signalplot-lin-bounds ( umin umax -- )
+
+  cr
+  NUMLENGTH 2* 1+ spaces ." | " over NUMLENGTH u.r ."    Lin" WIDTH 10 - NUMLENGTH 2 * - spaces dup NUMLENGTH u.r ."  |"
+  cr
+  NUMLENGTH 2* 1+ spaces
+  WIDTH 0 do [char] = emit loop cr
+
+  2dup = if 1+ then \ Prevent divide by zero later!
+  over - ( min range )
+
+  N_WAVE 0 do
+    i NUMLENGTH u.r
+    over i fft-real@ dup NUMLENGTH u.r space
+    swap - over WIDTH 1- swap u*/
+    spaces [char] | emit cr
+  loop
+
+  NUMLENGTH 2* 1+ spaces
+  WIDTH 0 do [char] = emit loop cr
+
+  2drop
+;
+
+: signalplot-lin-bounds-signed ( min max -- )
+
+  cr
+  NUMLENGTH 2* 1+ spaces ." | " over NUMLENGTH .r ."    Lin" WIDTH 10 - NUMLENGTH 2 * - spaces dup NUMLENGTH u.r ."  |"
+  cr
+  NUMLENGTH 2* 1+ spaces
+  WIDTH 0 do [char] = emit loop cr
+
+  2dup = if 1+ then \ Prevent divide by zero later!
+  over - ( min range )
+
+  N_WAVE 0 do
+    i NUMLENGTH u.r
+    over i fft-real@ dup NUMLENGTH .r space
+    swap - over WIDTH 1- swap u*/
+    spaces [char] | emit cr
+  loop
+
+  NUMLENGTH 2* 1+ spaces
+  WIDTH 0 do [char] = emit loop cr
+
+  2drop
+;
+
+: signalplot-log-bounds ( umin umax -- )
+
+  cr
+  NUMLENGTH 2* 1+ spaces ." | " over NUMLENGTH u.r ."    Log" WIDTH 10 - NUMLENGTH 2 * - spaces dup NUMLENGTH u.r ."  |"
+  cr
+  NUMLENGTH 2* 1+ spaces
+  WIDTH 0 do [char] = emit loop cr
+
+  bitlog swap bitlog swap
+
+  2dup = if 1+ then \ Prevent divide by zero later!
+  over - ( min range )
+
+  N_WAVE 0 do
+    i NUMLENGTH u.r
+    over i fft-real@ dup NUMLENGTH u.r space bitlog
+    swap - over WIDTH 1- swap u*/
+    spaces [char] | emit cr
+  loop
+
+  NUMLENGTH 2* 1+ spaces
+  WIDTH 0 do [char] = emit loop cr
+
+  2drop
+;
+
+100,0 2variable samplerate
+
+: fftplot-log ( -- ) \ FFT output is always signed, but this plots absolute values.
+
+
+  \ -1
+  \ N_WAVE 0 do
+  \   i fft-real@ abs umin
+  \   i fft-imag@ abs umin
+  \ loop
+
+  0 \ Start with zero as minimum value for scaling instead
+
+  0
+  N_WAVE 0 do
+    i fft-real@ abs umax
+    i fft-imag@ abs umax
+  loop
+
+  ( umin umax )
+
+  cr
+  NUMLENGTH 2* 1+ spaces ." | " over NUMLENGTH u.r ."    Log" WIDTH 10 - NUMLENGTH 2 * - spaces dup NUMLENGTH u.r ."  |"
+  cr
+  NUMLENGTH 2* 1+ spaces
+  WIDTH 0 do [char] = emit loop cr
+
+  bitlog swap bitlog swap
+
+  2dup = if 1+ then \ Prevent divide by zero later!
+  over - ( min range )
+
+  N_WAVE
+\        0 do  \ Symmetric printout
+  N_WAVE 2/ do  \ Start with DC component
+
+    i N_WAVE 2/ - s>f N_WAVE s>f f/ samplerate 2@ f* 3 f.nr7
+
+    over i fft-imag@ abs bitlog
+    swap - over WIDTH 1- swap u*/
+    >r
+    over i fft-real@ abs bitlog
+    swap - over WIDTH 1- swap u*/
+    r>
+
+    2dup umax >r
+         umin r> ( min max )
+
+    fillbar
+    cr
+
+  loop
+
+  NUMLENGTH 2* 1+ spaces
+  WIDTH 0 do [char] = emit loop cr
+
+  2drop
+;
+
+
+: signalplot-lin ( -- )
+  0 MAX-UINT
+  signalplot-lin-bounds
+;
+
+: signalplot-lin-min-max ( -- )
+  stats rot drop
+  signalplot-lin-bounds
+;
+
+
+: signalplot-lin-signed ( -- )
+  MIN-INT MAX-INT
+  signalplot-lin-bounds-signed
+;
+
+: signalplot-lin-min-max-signed ( -- )
+  stats-signed rot drop
+  signalplot-lin-bounds-signed
+;
+
+
+: signalplot-log ( -- )
+  0 MAX-UINT
+  signalplot-log-bounds
+;
+
+: signalplot-log-max ( -- )
+  0 stats rot drop nip
+  signalplot-log-bounds
+;

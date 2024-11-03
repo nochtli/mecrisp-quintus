@@ -3766,3 +3766,960 @@ $44000000 constant adc-channel
 [else]
   : init ( -- ) usb-connected? if usb-terminal then      welcome ;
 [then]
+\
+\  fix_fft.c - Fixed-point in-place Fast Fourier Transform
+\
+\  All data are fixed-point smallint integers, in which -32768
+\  to +32768 represent -1.0 to +1.0 respectively. Integer
+\  arithmetic is used for speed, instead of the more natural
+\  floating-point.
+\
+\  For the forward FFT (time -> freq), fixed scaling is
+\  performed to prevent arithmetic overflow, and to map a 0dB
+\  sine/cosine wave (i.e. amplitude = 32767) to two -6dB freq
+\  coefficients. The return value is always 0.
+\
+\  For the inverse FFT (freq -> time), fixed scaling cannot be
+\  done, as two 0dB coefficients would sum to a peak amplitude
+\  of 64K, overflowing the 32k range of the fixed-point integers.
+\  Thus, the fix_fft() routine performs variable scaling, and
+\  returns a value which is the number of bits LEFT by which
+\  the output must be shifted to get the actual amplitude
+\  (i.e. if fix_fft() returns 3, each value of fr[] and fi[]
+\  must be multiplied by 8 (2**3) for proper scaling.
+\  Clearly, this cannot be done within fixed-point smallint
+\  integers. In practice, if the result is to be used as a
+\  filter, the scale_shift can usually be ignored, as the
+\  result will be approximately correctly normalized as is.
+\
+\  Written by:  Tom Roberts  11/8/89
+\  Made portable:  Malcolm Slaney 12/15/94 malcolm@interval.com
+\  Enhanced:  Dimitrios P. Bouras  14 Jun 2006 dbouras@ieee.org
+\  Translated to Forth:  Matthias Koch, 22 Jan 2020 m.cook@gmx.net
+
+1024 constant N_WAVE       \ full length of Sinewave[]
+  10 constant LOG2_N_WAVE  \ log2(N_WAVE)
+
+\  Henceforth "smallint" implies 16-bit word. If this is not
+\  the case in your architecture, please replace "smallint"
+\  with a type definition which *is* a 16-bit word.
+
+\  Since we only use 3/4 of N_WAVE, we define only
+\  this many samples, in order to conserve data space.
+\ 0 .. N_WAVE - (N_WAVE div 4) - 1]
+
+create sinewave
+           0 ,    13176711 ,    26352927 ,    39528151 ,    52701886 ,    65873638 ,    79042909 ,    92209204 ,
+   105372028 ,   118530884 ,   131685278 ,   144834714 ,   157978697 ,   171116732 ,   184248325 ,   197372981 ,
+   210490205 ,   223599506 ,   236700387 ,   249792357 ,   262874923 ,   275947591 ,   289009870 ,   302061268 ,
+   315101294 ,   328129456 ,   341145265 ,   354148229 ,   367137860 ,   380113668 ,   393075166 ,   406021864 ,
+   418953276 ,   431868914 ,   444768293 ,   457650927 ,   470516330 ,   483364018 ,   496193509 ,   509004317 ,
+   521795962 ,   534567962 ,   547319836 ,   560051103 ,   572761285 ,   585449902 ,   598116478 ,   610760535 ,
+   623381597 ,   635979189 ,   648552837 ,   661102067 ,   673626407 ,   686125386 ,   698598532 ,   711045377 ,
+   723465451 ,   735858286 ,   748223418 ,   760560379 ,   772868705 ,   785147933 ,   797397601 ,   809617248 ,
+   821806412 ,   833964637 ,   846091463 ,   858186434 ,   870249094 ,   882278991 ,   894275670 ,   906238680 ,
+   918167571 ,   930061893 ,   941921199 ,   953745042 ,   965532977 ,   977284561 ,   988999350 ,  1000676904 ,
+  1012316783 ,  1023918549 ,  1035481765 ,  1047005996 ,  1058490807 ,  1069935767 ,  1081340444 ,  1092704410 ,
+  1104027236 ,  1115308495 ,  1126547764 ,  1137744620 ,  1148898639 ,  1160009404 ,  1171076494 ,  1182099495 ,
+  1193077990 ,  1204011566 ,  1214899812 ,  1225742317 ,  1236538674 ,  1247288476 ,  1257991319 ,  1268646799 ,
+  1279254514 ,  1289814067 ,  1300325059 ,  1310787094 ,  1321199779 ,  1331562722 ,  1341875532 ,  1352137821 ,
+  1362349203 ,  1372509293 ,  1382617709 ,  1392674071 ,  1402677998 ,  1412629116 ,  1422527049 ,  1432371425 ,
+  1442161873 ,  1451898024 ,  1461579512 ,  1471205973 ,  1480777043 ,  1490292363 ,  1499751575 ,  1509154321 ,
+  1518500249 ,  1527789006 ,  1537020242 ,  1546193611 ,  1555308767 ,  1564365365 ,  1573363067 ,  1582301532 ,
+  1591180424 ,  1599999410 ,  1608758156 ,  1617456334 ,  1626093615 ,  1634669674 ,  1643184190 ,  1651636840 ,
+  1660027307 ,  1668355275 ,  1676620430 ,  1684822462 ,  1692961061 ,  1701035921 ,  1709046738 ,  1716993210 ,
+  1724875039 ,  1732691926 ,  1740443579 ,  1748129706 ,  1755750016 ,  1763304223 ,  1770792043 ,  1778213193 ,
+  1785567395 ,  1792854371 ,  1800073847 ,  1807225552 ,  1814309215 ,  1821324571 ,  1828271354 ,  1835149305 ,
+  1841958163 ,  1848697672 ,  1855367579 ,  1861967633 ,  1868497584 ,  1874957188 ,  1881346200 ,  1887664381 ,
+  1893911493 ,  1900087299 ,  1906191569 ,  1912224071 ,  1918184579 ,  1924072869 ,  1929888719 ,  1935631909 ,
+  1941302224 ,  1946899449 ,  1952423376 ,  1957873794 ,  1963250500 ,  1968553290 ,  1973781966 ,  1978936329 ,
+  1984016187 ,  1989021348 ,  1993951623 ,  1998806828 ,  2003586778 ,  2008291294 ,  2012920199 ,  2017473319 ,
+  2021950482 ,  2026351520 ,  2030676267 ,  2034924560 ,  2039096240 ,  2043191148 ,  2047209132 ,  2051150039 ,
+  2055013722 ,  2058800034 ,  2062508834 ,  2066139982 ,  2069693340 ,  2073168776 ,  2076566158 ,  2079885359 ,
+  2083126253 ,  2086288718 ,  2089372636 ,  2092377891 ,  2095304368 ,  2098151959 ,  2100920555 ,  2103610052 ,
+  2106220350 ,  2108751350 ,  2111202957 ,  2113575078 ,  2115867624 ,  2118080509 ,  2120213650 ,  2122266965 ,
+  2124240379 ,  2126133816 ,  2127947205 ,  2129680478 ,  2131333570 ,  2132906418 ,  2134398964 ,  2135811151 ,
+  2137142926 ,  2138394238 ,  2139565041 ,  2140655291 ,  2141664947 ,  2142593969 ,  2143442325 ,  2144209981 ,
+  2144896908 ,  2145503082 ,  2146028478 ,  2146473078 ,  2146836865 ,  2147119824 ,  2147321945 ,  2147443221 ,
+
+  2147483647 ,  2147443221 ,  2147321945 ,  2147119824 ,  2146836865 ,  2146473078 ,  2146028478 ,  2145503082 ,
+  2144896908 ,  2144209981 ,  2143442325 ,  2142593969 ,  2141664947 ,  2140655291 ,  2139565041 ,  2138394238 ,
+  2137142926 ,  2135811151 ,  2134398964 ,  2132906418 ,  2131333570 ,  2129680478 ,  2127947205 ,  2126133816 ,
+  2124240379 ,  2122266965 ,  2120213650 ,  2118080509 ,  2115867624 ,  2113575078 ,  2111202957 ,  2108751350 ,
+  2106220350 ,  2103610052 ,  2100920555 ,  2098151959 ,  2095304368 ,  2092377891 ,  2089372636 ,  2086288718 ,
+  2083126253 ,  2079885359 ,  2076566158 ,  2073168776 ,  2069693340 ,  2066139982 ,  2062508834 ,  2058800034 ,
+  2055013722 ,  2051150039 ,  2047209132 ,  2043191148 ,  2039096240 ,  2034924560 ,  2030676267 ,  2026351520 ,
+  2021950482 ,  2017473319 ,  2012920199 ,  2008291294 ,  2003586778 ,  1998806828 ,  1993951623 ,  1989021348 ,
+  1984016187 ,  1978936329 ,  1973781966 ,  1968553290 ,  1963250500 ,  1957873794 ,  1952423376 ,  1946899449 ,
+  1941302224 ,  1935631909 ,  1929888719 ,  1924072869 ,  1918184579 ,  1912224071 ,  1906191569 ,  1900087299 ,
+  1893911493 ,  1887664381 ,  1881346200 ,  1874957188 ,  1868497584 ,  1861967633 ,  1855367579 ,  1848697672 ,
+  1841958163 ,  1835149305 ,  1828271354 ,  1821324571 ,  1814309215 ,  1807225552 ,  1800073847 ,  1792854371 ,
+  1785567395 ,  1778213193 ,  1770792043 ,  1763304223 ,  1755750016 ,  1748129706 ,  1740443579 ,  1732691926 ,
+  1724875039 ,  1716993210 ,  1709046738 ,  1701035921 ,  1692961061 ,  1684822462 ,  1676620430 ,  1668355275 ,
+  1660027307 ,  1651636840 ,  1643184190 ,  1634669674 ,  1626093615 ,  1617456334 ,  1608758156 ,  1599999410 ,
+  1591180424 ,  1582301532 ,  1573363067 ,  1564365365 ,  1555308767 ,  1546193611 ,  1537020242 ,  1527789006 ,
+  1518500249 ,  1509154321 ,  1499751575 ,  1490292363 ,  1480777043 ,  1471205973 ,  1461579512 ,  1451898024 ,
+  1442161873 ,  1432371425 ,  1422527049 ,  1412629116 ,  1402677998 ,  1392674071 ,  1382617709 ,  1372509293 ,
+  1362349203 ,  1352137821 ,  1341875532 ,  1331562722 ,  1321199779 ,  1310787094 ,  1300325059 ,  1289814067 ,
+  1279254514 ,  1268646799 ,  1257991319 ,  1247288476 ,  1236538674 ,  1225742317 ,  1214899812 ,  1204011566 ,
+  1193077990 ,  1182099495 ,  1171076494 ,  1160009404 ,  1148898639 ,  1137744620 ,  1126547764 ,  1115308495 ,
+  1104027236 ,  1092704410 ,  1081340444 ,  1069935767 ,  1058490807 ,  1047005996 ,  1035481765 ,  1023918549 ,
+  1012316783 ,  1000676904 ,   988999350 ,   977284561 ,   965532977 ,   953745042 ,   941921199 ,   930061893 ,
+   918167571 ,   906238680 ,   894275670 ,   882278991 ,   870249094 ,   858186434 ,   846091463 ,   833964637 ,
+   821806412 ,   809617248 ,   797397601 ,   785147933 ,   772868705 ,   760560379 ,   748223418 ,   735858286 ,
+   723465451 ,   711045377 ,   698598532 ,   686125386 ,   673626407 ,   661102067 ,   648552837 ,   635979189 ,
+   623381597 ,   610760535 ,   598116478 ,   585449902 ,   572761285 ,   560051103 ,   547319836 ,   534567962 ,
+   521795962 ,   509004317 ,   496193509 ,   483364018 ,   470516330 ,   457650927 ,   444768293 ,   431868914 ,
+   418953276 ,   406021864 ,   393075166 ,   380113668 ,   367137860 ,   354148229 ,   341145265 ,   328129456 ,
+   315101294 ,   302061268 ,   289009870 ,   275947591 ,   262874923 ,   249792357 ,   236700387 ,   223599506 ,
+   210490205 ,   197372981 ,   184248325 ,   171116732 ,   157978697 ,   144834714 ,   131685278 ,   118530884 ,
+   105372028 ,    92209204 ,    79042909 ,    65873638 ,    52701886 ,    39528151 ,    26352927 ,    13176711 ,
+
+           0 ,   -13176711 ,   -26352927 ,   -39528151 ,   -52701886 ,   -65873638 ,   -79042909 ,   -92209204 ,
+  -105372028 ,  -118530884 ,  -131685278 ,  -144834714 ,  -157978697 ,  -171116732 ,  -184248325 ,  -197372981 ,
+  -210490205 ,  -223599506 ,  -236700387 ,  -249792357 ,  -262874923 ,  -275947591 ,  -289009870 ,  -302061268 ,
+  -315101294 ,  -328129456 ,  -341145265 ,  -354148229 ,  -367137860 ,  -380113668 ,  -393075166 ,  -406021864 ,
+  -418953276 ,  -431868914 ,  -444768293 ,  -457650927 ,  -470516330 ,  -483364018 ,  -496193509 ,  -509004317 ,
+  -521795962 ,  -534567962 ,  -547319836 ,  -560051103 ,  -572761285 ,  -585449902 ,  -598116478 ,  -610760535 ,
+  -623381597 ,  -635979189 ,  -648552837 ,  -661102067 ,  -673626407 ,  -686125386 ,  -698598532 ,  -711045377 ,
+  -723465451 ,  -735858286 ,  -748223418 ,  -760560379 ,  -772868705 ,  -785147933 ,  -797397601 ,  -809617248 ,
+  -821806412 ,  -833964637 ,  -846091463 ,  -858186434 ,  -870249094 ,  -882278991 ,  -894275670 ,  -906238680 ,
+  -918167571 ,  -930061893 ,  -941921199 ,  -953745042 ,  -965532977 ,  -977284561 ,  -988999350 , -1000676904 ,
+ -1012316783 , -1023918549 , -1035481765 , -1047005996 , -1058490807 , -1069935767 , -1081340444 , -1092704410 ,
+ -1104027236 , -1115308495 , -1126547764 , -1137744620 , -1148898639 , -1160009404 , -1171076494 , -1182099495 ,
+ -1193077990 , -1204011566 , -1214899812 , -1225742317 , -1236538674 , -1247288476 , -1257991319 , -1268646799 ,
+ -1279254514 , -1289814067 , -1300325059 , -1310787094 , -1321199779 , -1331562722 , -1341875532 , -1352137821 ,
+ -1362349203 , -1372509293 , -1382617709 , -1392674071 , -1402677998 , -1412629116 , -1422527049 , -1432371425 ,
+ -1442161873 , -1451898024 , -1461579512 , -1471205973 , -1480777043 , -1490292363 , -1499751575 , -1509154321 ,
+ -1518500249 , -1527789006 , -1537020242 , -1546193611 , -1555308767 , -1564365365 , -1573363067 , -1582301532 ,
+ -1591180424 , -1599999410 , -1608758156 , -1617456334 , -1626093615 , -1634669674 , -1643184190 , -1651636840 ,
+ -1660027307 , -1668355275 , -1676620430 , -1684822462 , -1692961061 , -1701035921 , -1709046738 , -1716993210 ,
+ -1724875039 , -1732691926 , -1740443579 , -1748129706 , -1755750016 , -1763304223 , -1770792043 , -1778213193 ,
+ -1785567395 , -1792854371 , -1800073847 , -1807225552 , -1814309215 , -1821324571 , -1828271354 , -1835149305 ,
+ -1841958163 , -1848697672 , -1855367579 , -1861967633 , -1868497584 , -1874957188 , -1881346200 , -1887664381 ,
+ -1893911493 , -1900087299 , -1906191569 , -1912224071 , -1918184579 , -1924072869 , -1929888719 , -1935631909 ,
+ -1941302224 , -1946899449 , -1952423376 , -1957873794 , -1963250500 , -1968553290 , -1973781966 , -1978936329 ,
+ -1984016187 , -1989021348 , -1993951623 , -1998806828 , -2003586778 , -2008291294 , -2012920199 , -2017473319 ,
+ -2021950482 , -2026351520 , -2030676267 , -2034924560 , -2039096240 , -2043191148 , -2047209132 , -2051150039 ,
+ -2055013722 , -2058800034 , -2062508834 , -2066139982 , -2069693340 , -2073168776 , -2076566158 , -2079885359 ,
+ -2083126253 , -2086288718 , -2089372636 , -2092377891 , -2095304368 , -2098151959 , -2100920555 , -2103610052 ,
+ -2106220350 , -2108751350 , -2111202957 , -2113575078 , -2115867624 , -2118080509 , -2120213650 , -2122266965 ,
+ -2124240379 , -2126133816 , -2127947205 , -2129680478 , -2131333570 , -2132906418 , -2134398964 , -2135811151 ,
+ -2137142926 , -2138394238 , -2139565041 , -2140655291 , -2141664947 , -2142593969 , -2143442325 , -2144209981 ,
+ -2144896908 , -2145503082 , -2146028478 , -2146473078 , -2146836865 , -2147119824 , -2147321945 , -2147443221 ,
+
+ sinewave constant sinewave
+
+: sinewave@ ( u -- n ) cells sinewave + @  1-foldable inline ;
+
+\  FIX_MPY() - fixed-point multiplication & scaling.
+\  Substitute inline assembly for hardware-specific
+\  optimization suited to a particluar DSP processor.
+\  Scaling ensures that result remains 16-bit.
+
+\ : 2arshift (  d u --  d* ) 0 ?do d2/  loop 3-foldable ;
+\ : FIX_MPY ( a b -- c ) m* 31 2arshift drop ;
+
+\ : FIX_MPY ( a b -- c ) m* 1 lshift swap 31 rshift or ;
+
+\  fix_fft() - perform forward/inverse fast Fourier transform.
+\  fr[n],fi[n] are real and imaginary arrays, both INPUT AND
+\  RESULT (in-place FFT), with 0 <= n < 2**m; set inverse to
+\  0 for forward transform (FFT), or 1 for iFFT.
+
+N_WAVE cells buffer: fft-real
+N_WAVE cells buffer: fft-imag
+
+: fft-real! ( x u -- ) cells fft-real + ! inline ;
+: fft-real@ ( u -- x ) cells fft-real + @ inline ;
+
+: fft-imag! ( x u -- ) cells fft-imag + ! inline ;
+: fft-imag@ ( u -- x ) cells fft-imag + @ inline ;
+
+0 variable fft-inverse
+0 variable fft-n
+0 variable fft-mr
+0 variable fft-shift
+0 variable fft-scale
+0 variable fft-l
+0 variable fft-k
+0 variable fft-istep
+0 variable fft-tr
+0 variable fft-ti
+0 variable fft-wr
+0 variable fft-wi
+0 variable fft-i
+
+: fix-fft ( power inverse? -- scale )
+  fft-inverse ! 1 swap lshift fft-n !
+
+  \ max FFT size = N_WAVE
+  fft-n @ N_WAVE u> if -1 exit then
+
+  0 fft-mr !
+  0 fft-scale !
+
+  \ decimation in time - re-order data
+  fft-n @ 1 do
+
+    fft-n @ fft-l !
+
+    begin
+      fft-l @ 1 arshift fft-l !
+      fft-mr @ fft-l @ +   fft-n @  >=  not
+    until
+
+    fft-mr @   fft-l @ 1- and   fft-l @ +   fft-mr !
+
+    i fft-mr @ >
+    if
+      i fft-real@  fft-mr @ fft-real@  i fft-real! fft-mr @ fft-real!
+      i fft-imag@  fft-mr @ fft-imag@  i fft-imag! fft-mr @ fft-imag!
+    then
+
+  loop
+
+
+  1 fft-l !
+  LOG2_N_WAVE 1- fft-k !
+
+  begin
+    fft-l @ fft-n @ <
+  while
+    fft-inverse @
+    if \ variable scaling, depending upon data
+
+      false fft-shift !
+
+      fft-n @ 0 do
+        i fft-real@ abs $3FFFFFFF >
+        i fft-imag@ abs $3FFFFFFF >
+        or if true fft-shift ! then
+      loop
+
+      fft-shift @ if 1 fft-scale +! then
+
+    else
+      \ fixed scaling, for proper normalization --
+      \ there will be log2(n) passes, so this results
+      \ in an overall factor of 1/n, distributed to
+      \ maximize arithmetic accuracy.
+
+      true fft-shift !
+    then
+
+    \ it may not be obvious, but the shift will be
+    \ performed on each data point exactly once,
+    \ during this pass.
+
+    fft-l @ 1 lshift fft-istep !
+
+    fft-l @ 0 do
+
+      i fft-k @ lshift \ 0 <= j < N_WAVE/2
+
+      fft-shift @
+      if
+        dup  N_WAVE 2 rshift + sinewave@                                  2/ fft-wr !
+                               sinewave@ fft-inverse @ not if negate then 2/ fft-wi !
+      else
+        dup  N_WAVE 2 rshift + sinewave@                                     fft-wr !
+                               sinewave@ fft-inverse @ not if negate then    fft-wi !
+      then
+
+      i fft-i !
+
+      begin
+        fft-i @ fft-n @ <
+      while
+        fft-i @ fft-l @  +  >r
+
+        fft-wr @   r@ fft-real@   m* 1 lshift swap 31 rshift or    fft-wi @   r@ fft-imag@   m* 1 lshift swap 31 rshift or    -   fft-tr !
+        fft-wr @   r@ fft-imag@   m* 1 lshift swap 31 rshift or    fft-wi @   r@ fft-real@   m* 1 lshift swap 31 rshift or    +   fft-ti !
+
+        fft-shift @
+        if
+          fft-i @ fft-real@ 2/
+          fft-i @ fft-imag@ 2/
+        else
+          fft-i @ fft-real@
+          fft-i @ fft-imag@
+        then
+
+        ( qr qi )
+
+        2dup
+        fft-ti @ - r@ fft-imag!
+        fft-tr @ - r> fft-real!
+
+        fft-ti @ + fft-i @ fft-imag!
+        fft-tr @ + fft-i @ fft-real!
+
+        fft-istep @ fft-i +!
+      repeat
+
+    loop
+
+    -1 fft-k +!
+    fft-istep @ fft-l !
+
+  repeat
+
+  fft-scale @
+;
+
+: fftswap ( 2^m -- )
+  1- 1 swap lshift fft-n !
+  fft-n @ 0 do
+    i fft-real@  i fft-n @ + fft-real@  i fft-real!  i fft-n @ + fft-real!
+    i fft-imag@  i fft-n @ + fft-imag@  i fft-imag!  i fft-n @ + fft-imag!
+  loop
+;
+
+\ Calculate Bitlog and Bitexp - close relatives to logarithm and exponent to base 2.
+
+: bitlog ( u -- u )
+
+ \ Invented by Tom Lehman at Invivo Research, Inc., ca. 1990
+ \ Gives an integer analog of the log function
+ \ For large x, B(x) = 8*(log(base 2)(x) - 1)
+
+  dup 8 u<= if 1 lshift 
+            else 
+              ( u )
+              30 over clz - 3 lshift 
+              ( u s1 )
+              swap 
+              ( s1 u ) 
+              28 over clz - rshift 7 and
+              ( s1 s2 ) + 
+            then 
+
+  1-foldable ;
+
+
+: bitexp ( u -- u )
+    
+  \ Returns an integer value equivalent to
+  \ the exponential. For numbers > 16,
+  \ bitexp(x) approx = 2^(x/8 + 1)
+
+  \ B(E(x)) = x for 16 <= x <= 247.
+
+  dup 247 u>  \ Overflow ?
+  if drop $F0000000
+  else
+
+    dup 16 u<= if 1 rshift
+               else
+                 dup ( u u )
+                 7 and 8 or ( u b )
+                 swap ( b u )
+                 3 rshift 2 - lshift
+               then
+
+  then 
+
+  1-foldable ;
+
+
+\ Requires double, fixpoint, bitlog and fourier.
+
+\ ------------------------------------------------------------------------------
+\  A selection of useful tools
+\ ------------------------------------------------------------------------------
+
+0 INVERT                 CONSTANT MAX-UINT
+0 INVERT 1 RSHIFT        CONSTANT MAX-INT
+0 INVERT 1 RSHIFT INVERT CONSTANT MIN-INT
+
+12 CONSTANT NUMLENGTH \ 7 characters for 16 bit numbers, 12 characters for 32 bit numbers
+80 NUMLENGTH 2* 1+ - constant WIDTH
+
+\ Right-aligned number printing
+
+: d.r  ( d n -- )
+    >r
+    dup >r dabs <# #s r> sign #>
+    r> over - spaces type
+;
+
+:  .r  ( n1 n2 -- ) >r s>d r> d.r ;
+: u.r  ( u n -- )      0 swap d.r ;
+
+: m+ ( d n -- d' ) s>d d+ 3-foldable ;
+
+\ ------------------------------------------------------------------------------
+\  Heapsort
+\  https://rosettacode.org/wiki/Sorting_algorithms/Heapsort#Forth
+\ ------------------------------------------------------------------------------
+
+: r'@ r> r> r@ swap >r swap >r ;
+
+' < variable heapsort-comparison
+
+: precedes ( n1 n2 a -- f) >r cells r@ + @ swap cells r> + @ swap heapsort-comparison @ execute ;
+: exchange ( n1 n2 a --  ) >r cells r@ + swap cells r> + over @ over @ swap rot ! swap ! ;
+
+: siftDown                             ( a e s -- a e s)
+  swap >r swap >r dup                  ( s r)
+  begin                                ( s r)
+    dup 2* 1+ dup r'@ <                ( s r c f)
+  while                                ( s r c)
+    dup 1+ dup r'@ <                   ( s r c c+1 f)
+    if                                 ( s r c c+1)
+      over over r@ precedes if swap then
+    then drop                          ( s r c)
+    over over r@ precedes              ( s r c f)
+  while                                ( s r c)
+    tuck r@ exchange                   ( s r)
+  repeat then                          ( s r)
+  drop drop r> swap r> swap            ( a e s)
+;
+
+: heapsort-core                        ( a n --)
+  over >r                              ( a n)
+  dup 1- 1- 2/                         ( a c s)
+  begin                                ( a c s)
+    dup 0< 0=                          ( a c s f)
+  while                                ( a c s)
+    siftDown 1-                        ( a c s)
+  repeat drop                          ( a c)
+
+  1- 0                                 ( a e 0)
+  begin                                ( a e 0)
+    over 0 >                           ( a e 0 f)
+  while                                ( a e 0)
+    over over r@ exchange              ( a e 0)
+    siftDown swap 1- swap              ( a e 0)
+  repeat                               ( a e 0)
+  drop drop drop r> drop
+;
+
+
+: heapsort-signed ( addr len -- )
+  [']  < heapsort-comparison !
+  heapsort-core
+;
+
+: heapsort-unsigned ( addr len -- )
+  ['] u< heapsort-comparison !
+  heapsort-core
+;
+
+\ ------------------------------------------------------------------------------
+\  Switch between unsigned and signed
+\ ------------------------------------------------------------------------------
+
+: un<->signed ( -- ) \ Toggle sign bit
+  N_WAVE 0 do
+    i fft-real@ MIN-INT xor i fft-real!
+  loop
+;
+
+: un<->signed-imag ( -- ) \ Toggle sign bit
+  N_WAVE 0 do
+    i fft-imag@ MIN-INT xor i fft-imag!
+  loop
+;
+
+\ ------------------------------------------------------------------------------
+\  ASCII art tools
+\ ------------------------------------------------------------------------------
+
+
+: f.nr7 ( f -- ) ( f-Low f-High n -- ) \ Prints a s31.32 number
+
+  >r ( Low High R: n )
+
+  dup 0< >r
+  dabs
+  ( uLow uHigh )
+  0 <# #s   ( uLow 0 0 )
+
+  r> if [char] - hold then
+
+  drop swap ( 0 uLow )
+
+  [char] , hold<
+  r> 0 ?do f# loop
+
+  #> dup NUMLENGTH 2* swap - spaces
+
+  type space
+;
+
+: dashes 0 ?do [char] - emit loop ;
+
+: airbar ( min max -- )
+    2dup =
+    if
+      drop
+      spaces [char] | emit
+    else
+      over      spaces [char] < emit
+      swap - 1- spaces [char] > emit
+    then
+;
+
+: fillbar ( min max -- )
+    2dup =
+    if
+      drop
+      spaces [char] | emit
+    else
+      over      spaces [char] < emit
+      swap - 1- dashes [char] > emit
+    then
+;
+
+\ ------------------------------------------------------------------------------
+\  Signal statistics
+\ ------------------------------------------------------------------------------
+
+: stats ( -- avg umin umax )
+  0.
+  N_WAVE 0 do
+    i fft-real@  0 d+
+  loop
+  \ N_WAVE um/mod nip
+  LOG2_N_WAVE 2rshift drop
+
+  -1
+  N_WAVE 0 do
+    i fft-real@ umin
+  loop
+
+  0
+  N_WAVE 0 do
+    i fft-real@ umax
+  loop
+;
+
+: stats-signed ( -- avg min max )
+  0.
+  N_WAVE 0 do
+    i fft-real@  m+
+  loop
+  \ N_WAVE sm/rem nip
+  LOG2_N_WAVE 2arshift drop
+
+  MAX-INT
+  N_WAVE 0 do
+    i fft-real@ min
+  loop
+
+  MIN-INT
+  N_WAVE 0 do
+    i fft-real@ max
+  loop
+;
+
+: printstats ( -- )
+  cr
+  stats
+  rot  ." Avg: " NUMLENGTH u.r cr
+  swap ." Min: " NUMLENGTH u.r cr
+       ." Max: " NUMLENGTH u.r cr
+;
+
+: printstats-signed ( -- )
+  cr
+  stats-signed
+  rot  ." Avg: " NUMLENGTH .r cr
+  swap ." Min: " NUMLENGTH .r cr
+       ." Max: " NUMLENGTH .r cr
+;
+
+
+: printbin-signed ( bin count -- )
+  dup if swap NUMLENGTH .r NUMLENGTH .r cr else 2drop then
+;
+
+: signal-binning-signed ( -- )
+
+  cr
+  NUMLENGTH 2* 1+ dashes cr
+  NUMLENGTH 3 - spaces ." ADC"
+  NUMLENGTH 1 - spaces ." #" cr
+  NUMLENGTH 2* 1+ dashes
+
+  fft-real fft-imag N_WAVE cells move
+  fft-imag N_WAVE heapsort-signed
+
+  cr
+  MIN-INT 0
+  N_WAVE 0 do
+    over i fft-imag@ =
+    if 1+
+    else
+      printbin-signed
+      i fft-imag@ 1
+    then
+  loop
+  printbin-signed
+
+  fft-imag N_WAVE cells 0 fill
+;
+
+: printbin ( bin count -- )
+  dup if swap NUMLENGTH u.r NUMLENGTH u.r cr else 2drop then
+;
+
+: signal-binning ( -- )
+
+  cr
+  NUMLENGTH 2* 1+ dashes cr
+  NUMLENGTH 3 - spaces ." ADC"
+  NUMLENGTH 1 - spaces ." #" cr
+  NUMLENGTH 2* 1+ dashes
+
+  fft-real fft-imag N_WAVE cells move
+  fft-imag N_WAVE heapsort-unsigned
+
+  cr
+  0 0
+  N_WAVE 0 do
+    over i fft-imag@ =
+    if 1+
+    else
+      printbin
+      i fft-imag@ 1
+    then
+  loop
+  printbin
+
+  fft-imag N_WAVE cells 0 fill
+;
+
+\ ------------------------------------------------------------------------------
+\  Signal plotters
+\ ------------------------------------------------------------------------------
+
+: u*/ ( a b c -- d ) >r um* r> um/mod nip ;
+
+: signalplot-lin-bounds ( umin umax -- )
+
+  cr
+  NUMLENGTH 2* 1+ spaces ." | " over NUMLENGTH u.r ."    Lin" WIDTH 10 - NUMLENGTH 2 * - spaces dup NUMLENGTH u.r ."  |"
+  cr
+  NUMLENGTH 2* 1+ spaces
+  WIDTH 0 do [char] = emit loop cr
+
+  2dup = if 1+ then \ Prevent divide by zero later!
+  over - ( min range )
+
+  N_WAVE 0 do
+    i NUMLENGTH u.r
+    over i fft-real@ dup NUMLENGTH u.r space
+    swap - over WIDTH 1- swap u*/
+    spaces [char] | emit cr
+  loop
+
+  NUMLENGTH 2* 1+ spaces
+  WIDTH 0 do [char] = emit loop cr
+
+  2drop
+;
+
+: signalplot-lin-bounds-signed ( min max -- )
+
+  cr
+  NUMLENGTH 2* 1+ spaces ." | " over NUMLENGTH .r ."    Lin" WIDTH 10 - NUMLENGTH 2 * - spaces dup NUMLENGTH u.r ."  |"
+  cr
+  NUMLENGTH 2* 1+ spaces
+  WIDTH 0 do [char] = emit loop cr
+
+  2dup = if 1+ then \ Prevent divide by zero later!
+  over - ( min range )
+
+  N_WAVE 0 do
+    i NUMLENGTH u.r
+    over i fft-real@ dup NUMLENGTH .r space
+    swap - over WIDTH 1- swap u*/
+    spaces [char] | emit cr
+  loop
+
+  NUMLENGTH 2* 1+ spaces
+  WIDTH 0 do [char] = emit loop cr
+
+  2drop
+;
+
+: signalplot-log-bounds ( umin umax -- )
+
+  cr
+  NUMLENGTH 2* 1+ spaces ." | " over NUMLENGTH u.r ."    Log" WIDTH 10 - NUMLENGTH 2 * - spaces dup NUMLENGTH u.r ."  |"
+  cr
+  NUMLENGTH 2* 1+ spaces
+  WIDTH 0 do [char] = emit loop cr
+
+  bitlog swap bitlog swap
+
+  2dup = if 1+ then \ Prevent divide by zero later!
+  over - ( min range )
+
+  N_WAVE 0 do
+    i NUMLENGTH u.r
+    over i fft-real@ dup NUMLENGTH u.r space bitlog
+    swap - over WIDTH 1- swap u*/
+    spaces [char] | emit cr
+  loop
+
+  NUMLENGTH 2* 1+ spaces
+  WIDTH 0 do [char] = emit loop cr
+
+  2drop
+;
+
+100,0 2variable samplerate
+
+: fftplot-log ( -- ) \ FFT output is always signed, but this plots absolute values.
+
+
+  \ -1
+  \ N_WAVE 0 do
+  \   i fft-real@ abs umin
+  \   i fft-imag@ abs umin
+  \ loop
+
+  0 \ Start with zero as minimum value for scaling instead
+
+  0
+  N_WAVE 0 do
+    i fft-real@ abs umax
+    i fft-imag@ abs umax
+  loop
+
+  ( umin umax )
+
+  cr
+  NUMLENGTH 2* 1+ spaces ." | " over NUMLENGTH u.r ."    Log" WIDTH 10 - NUMLENGTH 2 * - spaces dup NUMLENGTH u.r ."  |"
+  cr
+  NUMLENGTH 2* 1+ spaces
+  WIDTH 0 do [char] = emit loop cr
+
+  bitlog swap bitlog swap
+
+  2dup = if 1+ then \ Prevent divide by zero later!
+  over - ( min range )
+
+  N_WAVE
+\        0 do  \ Symmetric printout
+  N_WAVE 2/ do  \ Start with DC component
+
+    i N_WAVE 2/ - s>f N_WAVE s>f f/ samplerate 2@ f* 3 f.nr7
+
+    over i fft-imag@ abs bitlog
+    swap - over WIDTH 1- swap u*/
+    >r
+    over i fft-real@ abs bitlog
+    swap - over WIDTH 1- swap u*/
+    r>
+
+    2dup umax >r
+         umin r> ( min max )
+
+    fillbar
+    cr
+
+  loop
+
+  NUMLENGTH 2* 1+ spaces
+  WIDTH 0 do [char] = emit loop cr
+
+  2drop
+;
+
+
+: signalplot-lin ( -- )
+  0 MAX-UINT
+  signalplot-lin-bounds
+;
+
+: signalplot-lin-min-max ( -- )
+  stats rot drop
+  signalplot-lin-bounds
+;
+
+
+: signalplot-lin-signed ( -- )
+  MIN-INT MAX-INT
+  signalplot-lin-bounds-signed
+;
+
+: signalplot-lin-min-max-signed ( -- )
+  stats-signed rot drop
+  signalplot-lin-bounds-signed
+;
+
+
+: signalplot-log ( -- )
+  0 MAX-UINT
+  signalplot-log-bounds
+;
+
+: signalplot-log-max ( -- )
+  0 stats rot drop nip
+  signalplot-log-bounds
+;
+
+\ ------------------------------------------------------------------------------
+\   Registers
+\ ------------------------------------------------------------------------------
+
+$40100000 constant adc-data
+$40200000 constant adc-ctrl
+$44000000 constant adc-channel
+
+\ ------------------------------------------------------------------------------
+\   Capture using FIFOs in logic
+\ ------------------------------------------------------------------------------
+
+: capture ( -- )
+  \ Clear FIFO
+  begin
+    adc-ctrl @ $10000 and
+  while
+    adc-data h@ drop
+  repeat
+
+  \ Capture measurements
+  fft-real
+  begin
+    begin adc-ctrl @ $10000 and until
+    adc-data h@
+
+    over !
+    1 cells +
+    dup fft-real N_WAVE cells + =
+  until
+  drop
+
+  fft-imag N_WAVE cells 0 fill
+;
+
+
+
+\ #######   RANDOM   ##########################################
+
+\ setseed   sets the random number seed
+\ random    returns a random 32-bit number
+\
+\ based on "Xorshift RNGs" by George Marsaglia
+\ http://www.jstatsoft.org/v08/i14/paper
+
+$7a92764b variable seed
+
+: setseed   ( u -- )
+    dup 0= or       \ map 0 to -1
+    seed !
+;
+
+: random    ( -- u )
+    seed @
+    dup 13 lshift xor
+    dup 17 rshift xor
+    dup 5  lshift xor
+    dup seed !
+    57947 *
+;
+
+: randrange  ( u0 -- u1 ) \ u1 is a random number less than u0
+    random um* nip
+;
+
+
+
+
+: zufall ( -- )
+
+  \ Capture measurements
+  fft-real
+  begin
+    random
+
+    over !
+    1 cells +
+    dup fft-real N_WAVE cells + =
+  until
+  drop
+
+  fft-imag N_WAVE cells 0 fill
+;
+
+\ ------------------------------------------------------------------------------
+\   Analyse the signal
+\ ------------------------------------------------------------------------------
+
+: show ( -- )
+
+  signalplot-lin-min-max
+  printstats
+  signal-binning
+
+  \ un<->signed
+
+  LOG2_N_WAVE false fix-fft drop
+  LOG2_N_WAVE fftswap
+
+  781,250 samplerate 2!
+  fftplot-log
+;
+
+\ How to use:
+\
+\   0 adc-channel io!
+\   capture show
+: live-bins ( -- )
+
+  \ Clear bins
+  64 0 do 0 i fft-imag! loop
+
+  \ Collect all data points into bins
+  N_WAVE 0 do
+    1  i fft-real@ 6 rshift cells fft-imag +  +!  \ 10 rshift for 16 bit ADC, 6 rshift for 12 bit ADC
+  loop
+
+  \ Find maximum value for scaling
+  0
+  64 0 do i fft-imag@ umax loop
+  bitlog ( maxcount )
+
+  \ Print bins as scaled ASCII art
+  64 0 do
+    i fft-imag@ bitlog ( maxcount count )
+
+    over 8 swap u*/  \ Scale maximum to available chars
+
+    \  01234567890123456789012345678901234
+    s"  _.,:;!|@" drop
+
+    + c@ emit
+  loop
+  drop
+
+  \ Show bins on the eight available LEDs
+  0
+  64 0 do
+    i fft-imag@ ( counts-in-bin ) 0<> if 1 i 3 rshift lshift or then
+  loop
+  leds
+;
+
+: esc? ( -- ? ) key? if key 27 = else false then ;
+
+: live ( -- )
+  cr
+  begin
+    capture
+    stats
+
+    rot    ." Avg: " NUMLENGTH u.r
+    swap ."   Min: " NUMLENGTH u.r
+         ."   Max: " NUMLENGTH u.r
+
+    ."   [" live-bins ." ]" cr
+
+  esc? until
+;

@@ -368,3 +368,8 @@
 
   - Contribution by Amith:
       New target: Thejas32
+
+25.10.2024, Matthias Koch, Mecrisp-Quintus 1.1.0a
+
+  - Native USB terminal for all ULX3S targets
+  - Analog signal lab from Mecrisp-Ice ported to RISC-V on ULX3S
