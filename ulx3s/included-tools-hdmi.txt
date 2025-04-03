@@ -1600,6 +1600,88 @@ boot-task variable up \ User Pointer
   2drop
 ;
 
+\ -----------------------------------------------------------------------------
+\  Text mode with character buffer
+\ -----------------------------------------------------------------------------
+
+$60000000 constant characters
+$60001000 constant glyphs
+
+: font! ( x addr -- ) glyphs     + c! ;
+: font@ ( addr -- x ) glyphs     + c@ ;
+
+: char! ( x addr -- ) characters + c! ;
+: char@ ( addr -- x ) characters + c@ ;
+
+\ -----------------------------------------------------------------------------
+\   Character handling for text mode
+\ -----------------------------------------------------------------------------
+
+100 constant xres
+ 37 constant yres
+
+0 variable xpos
+0 variable ypos
+
+0 variable textmarker
+
+: highlight ( -- )  $80 textmarker ! ;
+: normal    ( -- )    0 textmarker ! ;
+
+0 variable captionchars
+
+: caption ( -- ) \ Fix caption lines when scrolling
+  ypos @ xres * xpos @ + captionchars !
+;
+
+: nocaption ( -- ) 0 captionchars ! ; \ Remove caption protection
+
+: page ( -- ) \ Clear display
+  xres yres * captionchars @ do 32 i char! loop
+  captionchars @ xres /mod ypos ! xpos !
+;
+
+: clrscr ( -- ) page ; \ Just an intuitive alias for page
+
+: addline ( -- )
+  ypos @ yres 1- < if
+    1 ypos +!
+  else
+    captionchars @ xres +  characters +
+    captionchars @         characters +
+    xres yres * captionchars @ - xres -
+    move
+
+    xres yres 1- * characters + xres 32 fill
+  then
+  0 xpos !
+;
+
+: addchar ( c -- )
+  textmarker @ or
+  xpos @ xres 1- > if addline 0 xpos ! then
+  ypos @ xres * xpos @ + char!
+  1 xpos +!
+;
+
+: stepback ( -- )
+  xpos @
+  if
+    -1 xpos +!
+  else
+    ypos @ if -1 ypos +! xres 1- xpos ! then
+  then
+;
+
+: hdmi-emit ( c -- )
+  case
+    10 of addline  endof \ Line Feed
+     8 of stepback endof \ Backspace
+    dup $C0 and $80 <>
+    if dup 127 umin addchar then \ Display block glyph for UTF-8 chars.
+  endcase
+;
+
 $40000010 constant porta-in
 $40000020 constant porta-out
 $40000040 constant porta-dir
@@ -1671,6 +1753,16 @@ $42000000 constant usb-ctrl
   ['] serial-emit  hook-emit  !
 ;
 
+: serial-hdmi-emit ( c -- ) dup hdmi-emit serial-emit ;
+
+: serial-hdmi-terminal ( -- )
+  ['] serial-key?      hook-key?  !
+  ['] serial-emit?     hook-emit? !
+  ['] serial-key       hook-key   !
+  ['] serial-hdmi-emit hook-emit  !
+;
+
+
 : usb-terminal ( -- )
   ['] usb-key?  hook-key?  !
   ['] usb-emit? hook-emit? !
@@ -1678,12 +1770,43 @@ $42000000 constant usb-ctrl
   ['] usb-emit  hook-emit  !
 ;
 
+: usb-hdmi-emit ( c -- ) dup hdmi-emit usb-emit ;
+
+: usb-hdmi-terminal ( -- )
+  ['] usb-key?       hook-key?  !
+  ['] usb-emit?      hook-emit? !
+  ['] usb-key        hook-key   !
+  ['] usb-hdmi-emit  hook-emit  !
+;
+
+\ -----------------------------------------------------------------------------
+\  Terminal selection and prompt
+\ -----------------------------------------------------------------------------
+
+: +hdmi ( -- ) usb-connected? if usb-hdmi-terminal else serial-hdmi-terminal then ;
+: -hdmi ( -- ) usb-connected? if     usb-terminal else     serial-terminal then ;
+
+: prompt ( -- )
+  begin
+    highlight
+    query
+    normal
+    interpret
+    ."  ok." cr
+  again
+;
+
 \ -----------------------------------------------------------------------------
 \  Initialisation
 \ -----------------------------------------------------------------------------
 
-[ifdef] init
-  : init ( -- ) usb-connected? if usb-terminal then init welcome ;
-[else]
-  : init ( -- ) usb-connected? if usb-terminal then      welcome ;
-[then]
+: init ( -- )
+
+  [ifdef] init
+  init
+  [then]
+
+  page +hdmi risc-v welcome
+  begin key? while key drop repeat \ Alle aufgelaufenen Zeichen verwerfen
+  ['] prompt hook-quit ! quit
+;

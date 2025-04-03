@@ -380,3 +380,7 @@
 
   - Contribution by Peter Schildmann:
       New target: CH32L103
+
+14.03.2025, Matthiac Koch, Mecrisp-Quintus 1.1.1a
+
+  - HDMI 800x600 text mode output for ULX3S
