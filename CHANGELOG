@@ -373,3 +373,10 @@
 
   - Native USB terminal for all ULX3S targets
   - Analog signal lab from Mecrisp-Ice ported to RISC-V on ULX3S
+
+09.03.2025, Matthias Koch, Mecrisp-Quintus 1.1.1
+
+  - New target: Pi Pico 2 with RP2350
+
+  - Contribution by Peter Schildmann:
+      New target: CH32L103
