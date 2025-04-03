@@ -56,10 +56,10 @@ $44000000 constant adc-channel
 \  Terminal IO
 \ -----------------------------------------------------------------------------
 
-: usb-connected? ( -- ? ) usb-ctrl @ $400 and 0<> ; \ Are we configured already?
+: usb-connected? ( -- ? ) pause usb-ctrl @ $400 and 0<> ; \ Are we configured already?
 
-: usb-emit? ( -- ? ) usb-ctrl @ $200 and 0= ;
-: usb-key?  ( -- ? ) usb-ctrl @ $100 and 0<> ;
+: usb-emit? ( -- ? ) pause usb-ctrl @ $200 and 0= ;
+: usb-key?  ( -- ? ) pause usb-ctrl @ $100 and 0<> ;
 : usb-emit  ( c -- ) begin usb-emit? until usb-data c! ;
 : usb-key   ( -- c ) begin usb-key?  until usb-data c@ ;
 

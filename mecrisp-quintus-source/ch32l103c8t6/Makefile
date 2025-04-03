@@ -1,5 +1,5 @@
-# ARMGNU?=riscv64-linux-gnu
-ARMGNU?=riscv64-elf
+ARMGNU?=riscv64-linux-gnu
+# ARMGNU?=riscv64-elf
 
 AOPS = --warn --fatal-warnings
 

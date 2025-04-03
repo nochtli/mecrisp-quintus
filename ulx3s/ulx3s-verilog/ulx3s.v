@@ -20,6 +20,8 @@
 `include "../../common-verilog/usb_cdc/sie.v"
 `include "../../common-verilog/usb_cdc/usb_cdc.v"
 
+`include "TMDS_encoder.v"
+
 module ulx3s(
 
   input clk_25mhz,
@@ -75,17 +77,21 @@ module ulx3s(
   output [12:0] sdram_a,  // SDRAM address bus
   output [1:0] sdram_ba,  // SDRAM bank-address
   output [1:0] sdram_dqm, // byte select
-  inout [15:0] sdram_d    // data bus to/from SDRAM
+  inout [15:0] sdram_d,   // data bus to/from SDRAM
 
+   output [3:0] gpdi_dp   // 0: blue 1: green 2: red 3: pixel clock
+                          // gpdi_dn[3:0] generated automatically
+                          // using IO_TYPE=LVCMOS33D in ulx3s_v20.lpf
+                          // (D=Differential)
 );
 
    /***************************************************************************/
    // Clock.
    /***************************************************************************/
 
-   wire clk;
-   wire pll_locked40;
-   pll40 _pll_clk( .clkin(clk_25mhz), .clkout0(clk), .locked(pll_locked40) );  // 40 MHz
+   wire clk = pixclk; // Use pixel clock as main clock
+   wire pll_locked40 = pixclk_locked;
+   // pll40 _pll_clk( .clkin(clk_25mhz), .clkout0(clk), .locked(pll_locked40) );  // 40 MHz
 
    wire clk_48mhz;
    wire pll_locked48;
@@ -442,10 +448,11 @@ module ulx3s(
 
    // RAM, IO or Flash ?
 
-   wire mem_address_is_ram       = (mem_address[31:30] == 2'b00);
-   wire mem_address_is_io        = (mem_address[31:30] == 2'b01);
-   wire mem_address_is_spi_flash = (mem_address[31:30] == 2'b10);
-   wire mem_address_is_sdram     = (mem_address[31:30] == 2'b11);
+   wire mem_address_is_ram       = (mem_address[31:28] == 4'b0000); // 0
+   wire mem_address_is_io        = (mem_address[31:28] == 4'b0100); // 4
+   wire mem_address_is_char      = (mem_address[31:28] == 4'b0110); // 6
+   wire mem_address_is_spi_flash = (mem_address[31:28] == 4'b1000); // 8
+   wire mem_address_is_sdram     = (mem_address[31:28] == 4'b1100); // C
 
    wire io_rstrb = mem_rstrb & mem_address_is_io;
    wire io_wstrb = mem_wstrb & mem_address_is_io;
@@ -509,7 +516,7 @@ module ulx3s(
       .IO({flash_miso, flash_mosi})
    );
 
-   assign  mem_rbusy = sdram_busy | mapped_spi_flash_rbusy;
+   assign  mem_rbusy = sdram_busy | mapped_spi_flash_rbusy | (mem_address_is_char & char_rbusy);
    assign  mem_wbusy = sdram_busy;
 
    /***************************************************************************/
@@ -537,9 +544,242 @@ module ulx3s(
 
       (mem_address_is_ram       ? ram_rdata              : 32'd0) |
       (mem_address_is_io        ? io_rdata_buffered      : 32'd0) |
+      (mem_address_is_char      ? char_rdata             : 32'd0) |
       (mem_address_is_spi_flash ? mapped_spi_flash_rdata : 32'd0) |
       (mem_address_is_sdram     ? sdram_rdata            : 32'd0) ;
 
+   /***************************************************************************/
+   // Video mode constants and clocks
+   /***************************************************************************/
+
+   // The video signal generator is based on HDMI experiments by Bruno Levy:
+   // https://github.com/BrunoLevy/learn-fpga/tree/master/Basic/ULX3S/ULX3S_hdmi
+
+   wire pixclk;        // Pixel clock
+   wire pixclk_locked; // Pixel clock locked signal
+   wire half_clk_TMDS; // TMDS clock at half freq (5*pixclk)
+
+   // Select mode by uncommenting one of the lines below
+   // Note UART frequency divider and USB app clock frequency also needs to be changed.
+
+   `define MODE_800x600_40MHz
+// `define MODE_800x600_50MHz
+
+
+`ifdef MODE_800x600_40MHz // SVGA 800x600 @ 60 Hz
+   // localparam GFX_pixel_clock   = 40;
+   localparam GFX_width         = 800;
+   localparam GFX_height        = 600;
+   localparam GFX_h_front_porch = 40;
+   localparam GFX_h_sync_width  = 128;
+   localparam GFX_h_back_porch  = 88;
+   localparam GFX_v_front_porch = 1;
+   localparam GFX_v_sync_width  = 4;
+   localparam GFX_v_back_porch  = 23;
+
+  // Parameters of the PLL, found using: ecppll -i 25 -o 200 -f foobar.v
+   localparam CLKI_DIV = 1;
+   localparam CLKOP_DIV = 3;
+   localparam CLKOP_CPHASE = 1;
+   localparam CLKOP_FPHASE = 0;
+   localparam CLKFB_DIV = 8;
+`endif
+
+`ifdef MODE_800x600_50MHz // VESA 800x600 @ 72 Hz
+   // localparam GFX_pixel_clock   = 50;
+   localparam GFX_width         = 800;
+   localparam GFX_height        = 600;
+   localparam GFX_h_front_porch = 56;
+   localparam GFX_h_sync_width  = 120;
+   localparam GFX_h_back_porch  = 64;
+   localparam GFX_v_front_porch = 37;
+   localparam GFX_v_sync_width  = 6;
+   localparam GFX_v_back_porch  = 23;
+
+  // Parameters of the PLL, found using: ecppll -i 25 -o 250 -f foobar.v
+   localparam CLKI_DIV = 1;
+   localparam CLKOP_DIV = 2;
+   localparam CLKOP_CPHASE = 0;
+   localparam CLKOP_FPHASE = 0;
+   localparam CLKFB_DIV = 10;
+`endif
+
+   /***************************************************************************/
+   // The PLL
+   /***************************************************************************/
+
+   // The PLL converts a 25 MHz clock into a (pixel_clock_freq * 5) clock
+   // The TMDS serializers operate at (pixel_clock_freq * 10), but we use
+   // DDR mode, hence (pixel_clock_freq * 5).
+   // The (half) TMDS serializer clock is generated on pin CLKOP.
+   // In addition, the pixel clock (at TMDS freq/5) is generated on
+   // pin CLKOS (hence CLKOS_DIV = 5*CLKOP_DIV).
+
+   (* ICP_CURRENT="12" *) (* LPF_RESISTOR="8" *) (* MFG_ENABLE_FILTEROPAMP="1" *) (* MFG_GMCREF_SEL="2" *)
+    EHXPLLL #(
+        .CLKI_DIV(CLKI_DIV),
+        .CLKOP_DIV(CLKOP_DIV),
+        .CLKOP_CPHASE(CLKOP_CPHASE),
+        .CLKOP_FPHASE(CLKOP_FPHASE),
+        .CLKOS_ENABLE("ENABLED"),
+        .CLKOS_DIV(5*CLKOP_DIV),
+        .CLKOS_CPHASE(CLKOP_CPHASE),
+        .CLKOS_FPHASE(CLKOP_FPHASE),
+        .CLKFB_DIV(CLKFB_DIV)
+    ) pll_i (
+        .CLKI(clk_25mhz),
+        .CLKOP(half_clk_TMDS),
+        .CLKFB(half_clk_TMDS),
+        .CLKOS(pixclk),
+        .PHASESEL0(1'b0),
+        .PHASESEL1(1'b0),
+        .PHASEDIR(1'b1),
+        .PHASESTEP(1'b1),
+        .PHASELOADREG(1'b1),
+        .PLLWAKESYNC(1'b0),
+        .ENCLKOP(1'b0),
+        .LOCK(pixclk_locked)
+     );
+
+   /***************************************************************************/
+   // X, Y, hSync, vSync, DrawArea
+   /***************************************************************************/
+
+   localparam GFX_line_width = GFX_width  + GFX_h_front_porch + GFX_h_sync_width + GFX_h_back_porch;
+   localparam GFX_lines      = GFX_height + GFX_v_front_porch + GFX_v_sync_width + GFX_v_back_porch;
+
+   reg [10:0] GFX_X, GFX_Y;
+   reg hSync, vSync, DrawArea;
+
+   always @(posedge pixclk) DrawArea <= (GFX_X<GFX_width) && (GFX_Y<GFX_height);
+
+   always @(posedge pixclk) GFX_X <= (GFX_X==GFX_line_width-1) ? 0 : GFX_X+1;
+   always @(posedge pixclk) if(GFX_X==GFX_line_width-1) GFX_Y <= (GFX_Y==GFX_lines-1) ? 0 : GFX_Y+1;
+
+   always @(posedge pixclk) hSync <=
+      (GFX_X>=GFX_width+GFX_h_front_porch) && (GFX_X<GFX_width+GFX_h_front_porch+GFX_h_sync_width);
+
+   always @(posedge pixclk) vSync <=
+      (GFX_Y>=GFX_height+GFX_v_front_porch) && (GFX_Y<GFX_height+GFX_v_front_porch+GFX_v_sync_width);
+
+   /***************************************************************************/
+   // Text mode with 8x16 bitmap font
+   /***************************************************************************/
+
+   wire [10:0] xpos = GFX_X;
+   wire [ 9:0] ypos = GFX_Y;
+   wire vga_enable = DrawArea;
+   wire hsync = hSync;
+   wire vsync = vSync;
+
+   reg [7:0] red, green, blue;
+
+   reg  hsync_d1,  hsync_d2,  hsync_d3;
+   reg  vsync_d1,  vsync_d2,  vsync_d3;
+   reg enable_d1, enable_d2, enable_d3;
+
+   always @(posedge clk)
+   begin
+     // The pixel pipeline needs three clock cycles to provide bitmap data after
+     // the coordinates are valid, but the sync signals arrive the same cycle as the coordinates.
+     // Delay the timing signals for three cycles to get both in sync.
+
+     hsync_d1 <= hsync;
+     hsync_d2 <= hsync_d1;
+     hsync_d3 <= hsync_d2;
+
+     vsync_d1 <= vsync;
+     vsync_d2 <= vsync_d1;
+     vsync_d3 <= vsync_d2;
+
+     enable_d1 <= vga_enable;
+     enable_d2 <= enable_d1;
+     enable_d3 <= enable_d2;
+                                      // Black (required by VGA during blanking)
+     {red, green, blue}  <= ~enable_d2 ? 24'b00000000_00000000_00000000 :
+                                      // Cyan (highlight)                  Orange (normal)                  Navy background
+         bitmap_shift[7] ? colorswitch ? 24'b00000000_11100000_11100000 :  24'b11100000_10100000_00000000 : 24'b00000000_00000000_01100000;
+   end
+
+   // Combined memory for characters and font data
+   reg [7:0] characters [3*512 + 4095:0]; initial $readmemh("font-vga.hex", characters, 4096);
+
+   reg [7:0] char, bitmap_shift;
+   reg colorswitch, colorswitch_delay;
+
+   wire [12:0] characterindex = xpos[2:0] == 3'b000 ? xpos[9:3] + 100 * ypos[9:4] :
+                                xpos[2:0] == 3'b001 ? {char[6:0], ypos[3:0]}  + (13'd4096 - 13'd32*16) :
+                                mem_address[12:0];
+   reg char_rbusy;
+
+   wire remove = ypos[9:4] == 6'd37; // Do not display line 38 as this is cut in half
+
+   always @(posedge clk) // Pixel pipeline.
+   begin
+      // First & second cycle:
+      char    <= characters[ characterindex ]; // First cycle: 7-Bit ASCII. Using char[7] for highlight color.
+                                              // Second cycle: 8x16 pixel font bitmap data.
+      char_rbusy <= xpos[2:1] == 2'b00;
+
+      // Second cycle:
+      colorswitch_delay <= char[7];
+
+      // Third cycle:
+      if (xpos[2:0] == 3'b010) begin if (~remove) bitmap_shift <= char; colorswitch <= colorswitch_delay; end
+      else                     begin bitmap_shift <= {bitmap_shift[6:0], 1'b0}; end
+   end
+
+   // This is a little trick to coax a word-addressed CPU into byte aligned reads and writes:
+
+   wire [31:0] char_rdata = {char, char, char, char};
+
+   always @(posedge clk)
+     if(mem_wstrb & mem_address_is_char) characters[mem_address[12:0]] <= mem_wdata[7:0];
+
+   /***************************************************************************/
+   // RGB TMDS encoding
+   /***************************************************************************/
+
+   // Generate 10-bits TMDS red,green,blue signals.
+   // Blue embeds HSync/VSync in its control part.
+
+   wire [9:0] TMDS_red, TMDS_green, TMDS_blue;
+
+   TMDS_encoder encode_R(.clk(pixclk), .VD(red  ), .CD(2'b00),               .VDE(enable_d3), .TMDS(TMDS_red));
+   TMDS_encoder encode_G(.clk(pixclk), .VD(green), .CD(2'b00),               .VDE(enable_d3), .TMDS(TMDS_green));
+   TMDS_encoder encode_B(.clk(pixclk), .VD(blue ), .CD({vsync_d3,hsync_d3}), .VDE(enable_d3), .TMDS(TMDS_blue));
+
+   /***************************************************************************/
+   // Shifter
+   /***************************************************************************/
+
+   // Serialize the three 10-bits TMDS red, green, blue signals.
+   // This version of the shifter shifts and sends two bits per clock,
+   // using the ODDRX1F block of the ULX3S.
+
+   // The counter counts modulo 5 instead of modulo 10 (because we shift two
+   // bits at each clock)
+   reg [4:0] TMDS_mod5=1;
+   always @(posedge half_clk_TMDS) TMDS_mod5 <= {TMDS_mod5[3:0],TMDS_mod5[4]};
+   wire TMDS_shift_load = TMDS_mod5[4];
+
+   // Shifter now shifts two bits at each clock
+   reg [9:0] TMDS_shift_red=0, TMDS_shift_green=0, TMDS_shift_blue=0;
+   always @(posedge half_clk_TMDS) begin
+      TMDS_shift_red   <= TMDS_shift_load ? TMDS_red   : TMDS_shift_red  [9:2];
+      TMDS_shift_green <= TMDS_shift_load ? TMDS_green : TMDS_shift_green[9:2];
+      TMDS_shift_blue  <= TMDS_shift_load ? TMDS_blue  : TMDS_shift_blue [9:2];
+   end
+
+   // DDR serializers: they send D0 at the rising edge and D1 at the falling edge.
+   ODDRX1F ddr_red  (.D0(TMDS_shift_red[0]),   .D1(TMDS_shift_red[1]),   .Q(gpdi_dp[2]), .SCLK(half_clk_TMDS), .RST(1'b0));
+   ODDRX1F ddr_green(.D0(TMDS_shift_green[0]), .D1(TMDS_shift_green[1]), .Q(gpdi_dp[1]), .SCLK(half_clk_TMDS), .RST(1'b0));
+   ODDRX1F ddr_blue (.D0(TMDS_shift_blue[0]),  .D1(TMDS_shift_blue[1]),  .Q(gpdi_dp[0]), .SCLK(half_clk_TMDS), .RST(1'b0));
+
+   // The pixel clock is sent through the fourth differential pair.
+   assign gpdi_dp[3] = pixclk;
+
+   // Note (again): gpdi_dn[3:0] is generated automatically by LVCMOS33D mode in ulx3s_v20.lpf
 endmodule
 
 
@@ -641,4 +881,3 @@ EHXPLLL #(
         .LOCK(locked)
         );
 endmodule
-

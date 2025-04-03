@@ -41,6 +41,5 @@ cycles64:
 cycles:
 # -----------------------------------------------------------------------------
   pushdatos
-  rdcycle  x8
   csrrs x8, 0x0B00, zero # rdcycle x8
   ret

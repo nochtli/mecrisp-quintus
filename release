@@ -115,11 +115,13 @@ mv quintusemu-ulx3s ..
 rm -f *.o *.ppu
 cd ..
 
+cat ../common/conditional.txt                          ../common/disassembler-rv32imc.txt                                ../common/fixpt-math-lib.fs ../common/dictionary-tools.txt ../common/multitask.txt ../common/multitask-debug.txt ../common/forget.txt ../common/flamingo.txt ../common/dump.txt textmode.txt welcome-hdmi.txt > included-tools-hdmi.txt
 cat ../common/conditional.txt                          ../common/disassembler-rv32imc.txt                                ../common/fixpt-math-lib.fs ../common/dictionary-tools.txt ../common/multitask.txt ../common/multitask-debug.txt ../common/forget.txt ../common/flamingo.txt ../common/dump.txt welcome.txt > included-tools.txt
 cat ../common/conditional.txt                          ../common/disassembler-rv32imc.txt ../common/assembler-rv32im.txt ../common/fixpt-math-lib.fs ../common/dictionary-tools.txt ../common/emulator-rv32imc.txt                        ../common/forget.txt ../common/flamingo.txt ../common/dump.txt welcome.txt > included-emulator.txt
 cat ../common/conditional.txt ../common/acrobatics.txt ../common/disassembler-rv32imc.txt                                ../common/fixpt-math-lib.fs ../common/dictionary-tools.txt ../common/multitask.txt ../common/multitask-debug.txt ../common/forget.txt ../common/flamingo.txt ../common/dump.txt welcome.txt > included-acrobatics.txt
 
 ./buildcore ./quintusemu-ulx3s mecrisp-quintus-ulx3s.bin included-tools.txt      mecrisp-quintus-ulx3s-with-tools.bin
+./buildcore ./quintusemu-ulx3s mecrisp-quintus-ulx3s.bin included-tools-hdmi.txt mecrisp-quintus-ulx3s-with-tools-hdmi.bin
 ./buildcore ./quintusemu-ulx3s mecrisp-quintus-ulx3s.bin included-emulator.txt   mecrisp-quintus-ulx3s-with-emulator.bin
 ./buildcore ./quintusemu-ulx3s mecrisp-quintus-ulx3s.bin included-acrobatics.txt mecrisp-quintus-ulx3s-with-acrobatics.bin
 
@@ -452,6 +454,18 @@ fi
 
 # -----------------------------------------------------------------------------
 
+if [[ -z "$1" || "$1" = "ch32l103c8t6" ]]
+then
+cd mecrisp-quintus-source/ch32l103c8t6
+make clean all
+cp *.bin ../../ch32l103c8t6
+cp *.hex ../../ch32l103c8t6
+make clean
+cd ../..
+fi
+
+# -----------------------------------------------------------------------------
+
 if [[ -z "$1" || "$1" = "thejas32" ]]
 then
 cd mecrisp-quintus-source/thejas32
@@ -461,6 +475,21 @@ make clean
 cd ../..
 
 cd thejas32
+./buildcore
+cd ..
+fi
+
+# -----------------------------------------------------------------------------
+
+if [[ -z "$1" || "$1" = "rp2350" ]]
+then
+cd mecrisp-quintus-source/rp2350
+make clean all
+cp *.bin ../../rp2350
+make clean
+cd ../..
+
+cd rp2350
 ./buildcore
 cd ..
 fi
