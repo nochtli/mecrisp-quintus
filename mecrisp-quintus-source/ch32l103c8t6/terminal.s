@@ -100,11 +100,11 @@ uart_init:
   sw  x14, 0(x15)
   li  x15, R32_USART1_STATR
 # 115200 bps at 8Mhz HSI
-  li  x14, 69
+  li  x14, 0x0045
   sw  x14, OFFSET_BRR(x15)
   li  x14, 0b1100
   sw  x14, OFFSET_CTLR1(x15)
-  li  x14, 1<<12   # one stop bit
+  li  x14, 2<<12   # two stop bits
   sw  x14, OFFSET_CTLR2(x15)
   lw  x14, OFFSET_CTLR1(x15)
   li  x15, 1<<13
